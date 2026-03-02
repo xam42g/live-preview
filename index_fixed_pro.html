@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Ring Puzzle (Pro) – Miss=Reset · Score/Coins/Shop</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#070b17;}
+    canvas{display:block;width:100vw;height:100vh;touch-action:none;}
+
+    #hud{
+      position:fixed;left:12px;top:12px;z-index:10;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#e9eefb;
+      background:rgba(8,10,18,.55);
+      border:1px solid rgba(255,255,255,.10);
+      padding:10px 12px;border-radius:14px;line-height:1.25;
+      user-select:none;-webkit-user-select:none;
+      min-width: 280px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    #hud b{color:#fff}
+    #small{font-size:12.75px;opacity:.94;margin-top:6px;max-width:640px}
+    #row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    button{
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:12px;padding:8px 10px;
+      background:rgba(255,255,255,.10);
+      color:#fff;cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    .kbd{
+      display:inline-block;padding:2px 7px;border-radius:9px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.08);
+      font-size:12px;transform:translateY(-1px)
+    }
+
+    /* Miss overlay */
+    #miss{
+      position:fixed;inset:0;display:none;z-index:40;
+      background:rgba(0,0,0,.58);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#fff;align-items:center;justify-content:center;text-align:center;
+      padding:16px;
+    }
+    #missBox{
+      background:rgba(10,14,24,.92);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;
+      padding:14px 14px 12px;
+      max-width:520px;
+      box-shadow:0 20px 60px rgba(0,0,0,.45);
+    }
+    #missBox h3{margin:0 0 6px 0;font-size:18px}
+    #missBox p{margin:0;opacity:.9;font-size:13.5px;line-height:1.35}
+
+    /* Shop overlay */
+    #shop{
+      position:fixed;inset:0;display:none;z-index:50;
+      background:rgba(0,0,0,.58);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#e9eefb;
+    }
+    #shopPanel{
+      position:absolute;left:50%;top:50%;
+      transform:translate(-50%,-50%);
+      width:min(680px, calc(100vw - 24px));
+      background:rgba(10,14,24,.96);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;
+      padding:14px 14px 12px;
+      box-shadow:0 20px 60px rgba(0,0,0,.45);
+    }
+    #shopHeader{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px}
+    #shopHeader h2{margin:0;font-size:16px;letter-spacing:.2px}
+    #shopHeader .meta{font-size:12.5px;opacity:.92;text-align:right;line-height:1.25}
+    #skinGrid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(170px,1fr));
+      gap:10px;margin-top:10px
+    }
+    .skinCard{
+      background:rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:16px;
+      padding:10px;
+    }
+    .skinSwatch{
+      height:54px;border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      margin-bottom:8px;position:relative;overflow:hidden;
+    }
+    .skinSwatch::after{
+      content:"";position:absolute;inset:-40%;
+      background:radial-gradient(circle at 28% 28%, rgba(255,255,255,.26), rgba(255,255,255,0) 60%);
+      transform:rotate(8deg);
+    }
+    .skinTitle{font-size:13px;margin:0 0 8px 0;opacity:.98}
+    .skinActions{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .pill{
+      font-size:12px;padding:3px 9px;border-radius:999px;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.10);
+      opacity:.95;white-space:nowrap;
+    }
+    .buyBtn{
+      font-size:12.5px;padding:7px 10px;border-radius:12px;
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.16);
+      color:#fff;cursor:pointer;
+    }
+    .buyBtn:disabled{opacity:.45;cursor:not-allowed}
+    .hint{margin-top:10px;font-size:12.5px;opacity:.85;line-height:1.35}
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <b>Ring Puzzle (Pro)</b><br/>
+    Wischen = drehen · Teil kommt von unten ↑<br/>
+    <b>Miss = Reset</b> · Shop: <span class="kbd">B</span> oder Button<br/>
+    <div id="small"></div>
+    <div id="row">
+      <button id="resetBtn">Reset</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="shopBtn">Shop</button>
+    </div>
+  </div>
+
+  <div id="miss">
+    <div id="missBox">
+      <h3>Nicht getroffen 😬</h3>
+      <p>Reset läuft… (Coins & Skins bleiben, nur Run wird neu gestartet)</p>
+    </div>
+  </div>
+
+  <div id="shop" role="dialog" aria-modal="true">
+    <div id="shopPanel">
+      <div id="shopHeader">
+        <div>
+          <h2>Shop – Ring Skins (einfache Farben)</h2>
+          <div class="hint">Coins bekommst du für <b>je 3</b> volle Ringe.</div>
+        </div>
+        <div class="meta" id="shopMeta"></div>
+      </div>
+      <div id="skinGrid"></div>
+      <div class="hint">
+        Schließen: <span class="kbd">B</span> oder <span class="kbd">Esc</span> · Auf iPad: außerhalb tippen
+      </div>
+    </div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  // ===================== DOM =====================
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const info = document.getElementById('small');
+  const resetBtn = document.getElementById('resetBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const shopBtn  = document.getElementById('shopBtn');
+  const hud      = document.getElementById('hud');
+
+  const missEl = document.getElementById('miss');
+
+  const shopEl    = document.getElementById('shop');
+  const shopPanel = document.getElementById('shopPanel');
+  const skinGrid  = document.getElementById('skinGrid');
+  const shopMeta  = document.getElementById('shopMeta');
+
+  // ===================== HiDPI =====================
+  function resize(){
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    canvas.width  = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+  }
+  addEventListener('resize', resize, { passive:true });
+  resize();
+
+  // ===================== Math helpers =====================
+  const TAU = Math.PI * 2;
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const normAngle = a => ((a % TAU) + TAU) % TAU;
+  const lerp = (a,b,t)=>a+(b-a)*t;
+  function angleDiff(a,b){
+    let d = normAngle(b) - normAngle(a);
+    if (d > Math.PI) d -= TAU;
+    if (d < -Math.PI) d += TAU;
+    return d;
+  }
+
+  // ===================== Layout =====================
+  const SLOTS = 20;
+  const SLOT_ANG = TAU / SLOTS;
+
+  function layout(){
+    const W = innerWidth, H = innerHeight;
+    const cx = W * 0.5;
+    const cy = H * 0.22;
+    const ringW = Math.max(18, Math.min(34, Math.min(W,H)*0.035));
+    const baseR = Math.min(W, H) * 0.22;
+    const pedestalR = baseR + ringW + 70;
+    const plateW = Math.min(W*0.46, 560);
+    return {cx, cy, baseR, ringW, pedestalR, plateW};
+  }
+
+  // ===================== Skins =====================
+  const SKINS = [
+    { id:"classic", name:"Classic", cost:0, palette:{
+      bgTop:"#0b1020", bgBot:"#071021",
+      pedestal:"#9aa8c5", pedestalDark:"#7f8fad", pedestalSide:"#6a7896",
+      plate:"#9fb0d2", plateDark:"#7f90b6",
+      top:"#f2e7a6", seam:"rgba(150,140,90,.35)",
+      side:"#1b7e78", sideDark:"#136360",
+      hole:"rgba(0,0,0,.30)",
+      red:"#ff2a2a",
+      hub:"#dfe3ea"
+    }},
+    { id:"sunset", name:"Sunset", cost:6, palette:{
+      bgTop:"#1a0c1f", bgBot:"#08081a",
+      pedestal:"#b8a2c7", pedestalDark:"#8a6f9f", pedestalSide:"#6f577f",
+      plate:"#b9a1c8", plateDark:"#8d6fa1",
+      top:"#ffd4a6", seam:"rgba(150,110,90,.32)",
+      side:"#ff6a3d", sideDark:"#c9522f",
+      hole:"rgba(0,0,0,.32)",
+      red:"#ff2a2a",
+      hub:"#f2f3f6"
+    }},
+    { id:"ocean", name:"Ocean", cost:6, palette:{
+      bgTop:"#031425", bgBot:"#041022",
+      pedestal:"#91a9c4", pedestalDark:"#6e86a3", pedestalSide:"#5a7190",
+      plate:"#8aa9c8", plateDark:"#5f82aa",
+      top:"#c9f0ff", seam:"rgba(80,120,140,.30)",
+      side:"#0fb5c9", sideDark:"#0a8796",
+      hole:"rgba(0,0,0,.32)",
+      red:"#ff2a2a",
+      hub:"#e9f3ff"
+    }},
+    { id:"forest", name:"Forest", cost:6, palette:{
+      bgTop:"#061611", bgBot:"#071021",
+      pedestal:"#93b2a2", pedestalDark:"#6f927f", pedestalSide:"#567764",
+      plate:"#88b3a0", plateDark:"#5a8b74",
+      top:"#e7f2bf", seam:"rgba(110,140,80,.30)",
+      side:"#2a8b57", sideDark:"#1f6a42",
+      hole:"rgba(0,0,0,.32)",
+      red:"#ff2a2a",
+      hub:"#e7ecef"
+    }},
+    { id:"mono", name:"Monochrome", cost:8, palette:{
+      bgTop:"#0b0b10", bgBot:"#06060b",
+      pedestal:"#b8bcc9", pedestalDark:"#8f95a8", pedestalSide:"#6d748a",
+      plate:"#aeb4c7", plateDark:"#7e86a1",
+      top:"#f4f6ff", seam:"rgba(0,0,0,.18)",
+      side:"#40465e", sideDark:"#2b2f42",
+      hole:"rgba(0,0,0,.35)",
+      red:"#ff2a2a",
+      hub:"#ffffff"
+    }},
+  ];
+
+  // economy
+  const SCORE_PER_RING = 100;
+  const COINS_PER_3_RINGS = 3;
+
+  // persistence
+  const LS_KEY = "ring_puzzle_save_v2";
+  let coins = 0;
+  let bestScore = 0;
+  let ownedSkins = new Set(["classic"]);
+  let equippedSkinId = "classic";
+  let COL = SKINS[0].palette;
+
+  function applySkin(){
+    const s = SKINS.find(x=>x.id===equippedSkinId) || SKINS[0];
+    COL = s.palette;
+  }
+  function loadSave(){
+    try{
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      coins = Number(s.coins || 0);
+      bestScore = Number(s.bestScore || 0);
+      ownedSkins = new Set(Array.isArray(s.ownedSkins) ? s.ownedSkins : ["classic"]);
+      if (!ownedSkins.has("classic")) ownedSkins.add("classic");
+      equippedSkinId = (s.equippedSkinId && ownedSkins.has(s.equippedSkinId)) ? s.equippedSkinId : "classic";
+    } catch {}
+  }
+  function saveNow(){
+    const s = { coins, bestScore, ownedSkins:[...ownedSkins], equippedSkinId };
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {}
+  }
+
+  // ===================== Rings & gameplay =====================
+  const RINGS_TEMPLATE = [
+    { holes: [ {start:1,len:2}, {start:7,len:2}, {start:13,len:2} ] },
+    { holes: [ {start:3,len:2}, {start:11,len:2} ] },
+    { holes: [ {start:6,len:1}, {start:15,len:1} ] },
+  ];
+  function buildHoleSet(r){
+    const set = new Set();
+    for (const h of r.holes){
+      for (let i=0;i<h.len;i++) set.add((h.start+i)%SLOTS);
+    }
+    return set;
+  }
+  function makeRings(){
+    return RINGS_TEMPLATE.map((r)=>({
+      holeSet: buildHoleSet(r),
+      filled: new Set(),
+      popping:false,
+      popT:0
+    }));
+  }
+
+  let rings = makeRings();
+  let ringAngle = 0;
+  let ringVel = 0;
+  let piece = null; // {lenSlots,y,vy,state,snapT}
+  let spawnCount = 0;
+  let dropCooldown = 0;
+
+  let score = 0;
+  let ringsPoppedSinceCoin = 0;
+
+  // states
+  let paused = false;
+  let wasPausedBeforeShop = false;
+
+  function baseCooldown(){
+    return clamp(2.40 - spawnCount*0.04, 1.15, 2.40);
+  }
+  function scheduleNextSpawn(){ dropCooldown = baseCooldown(); }
+  function activeRing(){ return rings[0] || null; }
+  function holesRemaining(r){
+    let c=0; for (const s of r.holeSet) if (!r.filled.has(s)) c++;
+    return c;
+  }
+  function isRingComplete(r){
+    for (const s of r.holeSet) if (!r.filled.has(s)) return false;
+    return true;
+  }
+
+  function getWorldDropAngle(){ return Math.PI/2; } // down
+  function ringHasAnyFit(r, lenSlots){
+    for (let start=0; start<SLOTS; start++){
+      let ok=true;
+      for (let i=0;i<lenSlots;i++){
+        const s=(start+i)%SLOTS;
+        if (!r.holeSet.has(s) || r.filled.has(s)) { ok=false; break; }
+      }
+      if (ok) return true;
+    }
+    return false;
+  }
+  function findBestHoleForPiece(r, lenSlots){
+    const dropAng = getWorldDropAngle();
+    let best=null;
+    for (let start=0; start<SLOTS; start++){
+      let ok=true;
+      for (let i=0;i<lenSlots;i++){
+        const s=(start+i)%SLOTS;
+        if (!r.holeSet.has(s) || r.filled.has(s)) { ok=false; break; }
+      }
+      if (!ok) continue;
+      const centerSlot = start + (lenSlots/2);
+      const centerWorld = normAngle(centerSlot*SLOT_ANG + ringAngle);
+      const d = Math.abs(angleDiff(dropAng, centerWorld));
+      if (!best || d < best.d) best = {start, d};
+    }
+    return best;
+  }
+  function commitFill(r, start, lenSlots){
+    for (let i=0;i<lenSlots;i++) r.filled.add((start+i)%SLOTS);
+  }
+
+  function spawnPiece(){
+    if (piece || paused || isShopOpen() || missResetTimer>0) return;
+    const r = activeRing();
+    if (!r) return;
+    const can2 = ringHasAnyFit(r,2);
+    const can1 = ringHasAnyFit(r,1);
+    if (!can1 && !can2) return;
+    const lenSlots = (can2 && Math.random()<0.55) ? 2 : 1;
+    piece = { lenSlots, y: innerHeight + 160, vy: 0, state:"rise", snapT:0 };
+    spawnCount++;
+  }
+
+  function popOuterRing(){
+    const r = activeRing();
+    if (!r) return;
+    r.popping = true;
+    r.popT = 0;
+  }
+  function awardForRingPopped(){
+    score += SCORE_PER_RING;
+    if (score > bestScore) bestScore = score;
+
+    ringsPoppedSinceCoin++;
+    if (ringsPoppedSinceCoin >= 3){
+      const batches = Math.floor(ringsPoppedSinceCoin / 3);
+      coins += batches * COINS_PER_3_RINGS;
+      ringsPoppedSinceCoin = ringsPoppedSinceCoin % 3;
+    }
+    saveNow();
+  }
+  function removeOuterRing(){
+    rings.shift();
+    awardForRingPopped();
+    if (rings.length === 0){
+      rings = makeRings();
+      spawnCount = 0;
+    }
+  }
+
+  // miss => reset (run only)
+  let missResetTimer = 0;
+  function triggerMissReset(){
+    if (missResetTimer > 0) return;
+    missEl.style.display = "flex";
+    missResetTimer = 0.75;
+  }
+  function resetRunOnly(){
+    rings = makeRings();
+    ringAngle = 0;
+    ringVel = 0;
+    piece = null;
+    spawnCount = 0;
+    dropCooldown = 0;
+    score = 0;
+    ringsPoppedSinceCoin = 0;
+    scheduleNextSpawn();
+  }
+
+  function resetAll(){
+    resetRunOnly();
+    missResetTimer = 0;
+    missEl.style.display = "none";
+    paused = false;
+    pauseBtn.textContent = "Pause";
+  }
+
+  // ===================== Input =====================
+  let pointerDown=false, lastX=0, lastT=0;
+
+  function isShopOpen(){ return shopEl.style.display === "block"; }
+
+  function onDown(e){
+    if (isShopOpen()) return;
+    // ignore taps on HUD (so you don't rotate accidentally)
+    if (hud.contains(e.target)) return;
+
+    pointerDown=true;
+    lastX=e.clientX;
+    lastT=performance.now();
+    ringVel=0;
+    canvas.setPointerCapture(e.pointerId);
+  }
+  function onMove(e){
+    if (!pointerDown || isShopOpen()) return;
+    const x=e.clientX;
+    const t=performance.now();
+    const dx=x-lastX;
+    const dt=Math.max(8, t-lastT);
+    lastX=x; lastT=t;
+
+    const rotPerPx=0.0058;
+    ringAngle += dx*rotPerPx;
+    ringVel = (dx*rotPerPx) / (dt/16.666);
+  }
+  function onUp(e){
+    pointerDown=false;
+    try{ canvas.releasePointerCapture(e.pointerId); }catch{}
+  }
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onUp);
+
+  // ===================== Shop =====================
+  function openShop(){
+    wasPausedBeforeShop = paused;
+    paused = true;
+    pauseBtn.textContent = "Weiter";
+    shopEl.style.display="block";
+    renderShop();
+  }
+  function closeShop(){
+    shopEl.style.display="none";
+    paused = wasPausedBeforeShop;              // FIX: restore previous pause state
+    pauseBtn.textContent = paused ? "Weiter" : "Pause";
+  }
+  function toggleShop(){ isShopOpen() ? closeShop() : openShop(); }
+
+  shopBtn.addEventListener('click', toggleShop);
+
+  addEventListener('keydown', (e)=>{
+    if (e.key==="b" || e.key==="B"){ e.preventDefault(); toggleShop(); }
+    if (e.key==="Escape" && isShopOpen()){ e.preventDefault(); closeShop(); }
+  });
+
+  // iPad: tap outside panel to close
+  shopEl.addEventListener('pointerdown', (e)=>{
+    if (!shopPanel.contains(e.target)) closeShop();
+  });
+
+  // quick mobile gesture: double-tap HUD to toggle shop
+  let lastHudTap=0;
+  hud.addEventListener('pointerdown', (e)=>{
+    if (e.target && e.target.tagName === "BUTTON") return;
+    const now = performance.now();
+    if (now - lastHudTap < 320){
+      toggleShop();
+      lastHudTap = 0;
+    } else lastHudTap = now;
+  });
+
+  function renderShop(){
+    const equippedName = (SKINS.find(s=>s.id===equippedSkinId)||SKINS[0]).name;
+    shopMeta.innerHTML = `Coins: <b>${coins}</b><br>Ausgerüstet: <b>${equippedName}</b>`;
+    skinGrid.innerHTML = "";
+
+    for (const skin of SKINS){
+      const owned = ownedSkins.has(skin.id);
+      const equipped = (equippedSkinId === skin.id);
+
+      const card = document.createElement("div");
+      card.className = "skinCard";
+
+      const sw = document.createElement("div");
+      sw.className = "skinSwatch";
+      sw.style.background = `linear-gradient(90deg, ${skin.palette.top}, ${skin.palette.side})`;
+
+      const title = document.createElement("div");
+      title.className = "skinTitle";
+      title.textContent = skin.name;
+
+      const actions = document.createElement("div");
+      actions.className = "skinActions";
+
+      const price = document.createElement("span");
+      price.className = "pill";
+      price.textContent = skin.cost===0 ? "Gratis" : `${skin.cost} Coins`;
+
+      const btn = document.createElement("button");
+      btn.className = "buyBtn";
+
+      if (equipped){
+        btn.textContent = "Ausgerüstet";
+        btn.disabled = true;
+      } else if (owned){
+        btn.textContent = "Auswählen";
+        btn.onclick = ()=>{
+          equippedSkinId = skin.id;
+          applySkin();
+          saveNow();
+          renderShop();
+        };
+      } else {
+        btn.textContent = "Kaufen";
+        btn.disabled = coins < skin.cost;
+        btn.onclick = ()=>{
+          if (coins < skin.cost) return;
+          coins -= skin.cost;
+          ownedSkins.add(skin.id);
+          equippedSkinId = skin.id;
+          applySkin();
+          saveNow();
+          renderShop();
+        };
+      }
+
+      actions.appendChild(price);
+      actions.appendChild(btn);
+
+      card.appendChild(sw);
+      card.appendChild(title);
+      card.appendChild(actions);
+
+      skinGrid.appendChild(card);
+    }
+  }
+
+  // ===================== Rendering (more polished) =====================
+  function drawBackground(){
+    // base gradient
+    const g = ctx.createLinearGradient(0,0,0,innerHeight);
+    g.addColorStop(0, COL.bgTop);
+    g.addColorStop(1, COL.bgBot);
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,innerWidth,innerHeight);
+
+    // vignette
+    const v = ctx.createRadialGradient(innerWidth*0.5, innerHeight*0.45, Math.min(innerWidth,innerHeight)*0.2,
+                                       innerWidth*0.5, innerHeight*0.45, Math.min(innerWidth,innerHeight)*0.85);
+    v.addColorStop(0, "rgba(0,0,0,0)");
+    v.addColorStop(1, "rgba(0,0,0,.40)");
+    ctx.fillStyle = v;
+    ctx.fillRect(0,0,innerWidth,innerHeight);
+  }
+
+  function drawPedestal(L){
+    const {cx, cy, pedestalR} = L;
+    ctx.save();
+    ctx.translate(cx, cy + 18);
+
+    // ground shadow
+    ctx.beginPath();
+    ctx.ellipse(0, 2, pedestalR*1.08, pedestalR*0.58, 0, 0, TAU);
+    ctx.fillStyle = "rgba(0,0,0,.38)";
+    ctx.fill();
+
+    // pedestal body (stacked ellipses for depth)
+    const bodyH = 74;
+    const topY = -38;
+
+    // side
+    const sideGrad = ctx.createLinearGradient(0, topY, 0, topY+bodyH);
+    sideGrad.addColorStop(0, COL.pedestalDark);
+    sideGrad.addColorStop(1, COL.pedestalSide);
+    ctx.fillStyle = sideGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, topY + bodyH, pedestalR*0.98, pedestalR*0.50, 0, 0, TAU);
+    ctx.ellipse(0, topY, pedestalR*1.02, pedestalR*0.52, 0, 0, TAU);
+    ctx.fill("evenodd");
+
+    // top
+    const topGrad = ctx.createLinearGradient(-pedestalR, topY, pedestalR, topY);
+    topGrad.addColorStop(0, COL.pedestalDark);
+    topGrad.addColorStop(0.55, COL.pedestal);
+    topGrad.addColorStop(1, "rgba(255,255,255,.12)");
+    ctx.beginPath();
+    ctx.ellipse(0, topY, pedestalR*1.02, pedestalR*0.52, 0, 0, TAU);
+    ctx.fillStyle = topGrad;
+    ctx.fill();
+
+    // rim
+    ctx.beginPath();
+    ctx.ellipse(0, topY, pedestalR*0.82, pedestalR*0.42, 0, 0, TAU);
+    ctx.strokeStyle = "rgba(0,0,0,.16)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // subtle radial ticks
+    ctx.save();
+    ctx.translate(0, topY);
+    ctx.strokeStyle = "rgba(0,0,0,.12)";
+    ctx.lineWidth = 1;
+    for (let i=0;i<12;i++){
+      const a = (i/12)*TAU;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*pedestalR*0.88, Math.sin(a)*pedestalR*0.44);
+      ctx.lineTo(Math.cos(a)*pedestalR*0.97, Math.sin(a)*pedestalR*0.49);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawCenterPlate(L){
+    const {cx, cy, baseR, ringW, plateW} = L;
+    const topY = cy + baseR*0.42;
+
+    // plate body with gradient + edge
+    const pg = ctx.createLinearGradient(0, topY, 0, innerHeight);
+    pg.addColorStop(0, COL.plate);
+    pg.addColorStop(1, COL.plateDark);
+
+    ctx.save();
+    ctx.fillStyle = pg;
+    ctx.fillRect(cx - plateW/2, topY, plateW, innerHeight);
+
+    // edges
+    const edge = ctx.createLinearGradient(cx-plateW/2,0,cx+plateW/2,0);
+    edge.addColorStop(0,"rgba(0,0,0,.22)");
+    edge.addColorStop(0.10,"rgba(0,0,0,0)");
+    edge.addColorStop(0.90,"rgba(0,0,0,0)");
+    edge.addColorStop(1,"rgba(0,0,0,.22)");
+    ctx.fillStyle = edge;
+    ctx.fillRect(cx - plateW/2, topY, plateW, innerHeight);
+
+    // top lip
+    ctx.strokeStyle = "rgba(255,255,255,.12)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx-plateW/2, topY+2);
+    ctx.lineTo(cx+plateW/2, topY+2);
+    ctx.stroke();
+
+    // red line
+    ctx.strokeStyle = COL.red;
+    ctx.lineWidth = 4;
+    const lineY = cy + baseR + ringW + 28;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.min(innerWidth*0.22, 240), lineY);
+    ctx.lineTo(cx + Math.min(innerWidth*0.22, 240), lineY);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawRing3D(L, ring, idx){
+    const {cx, cy, baseR, ringW} = L;
+
+    // each inner ring slightly smaller and slightly up for separation
+    const offset = idx * (ringW + 10);
+    const r0 = baseR - offset;
+    const r1 = r0 + ringW;
+
+    let alpha=1, scale=1, lift=0;
+    if (ring.popping){
+      scale = 1 + ring.popT*0.18;
+      alpha = 1 - ring.popT;
+      lift  = ring.popT * 20;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(cx, cy - lift);
+    ctx.rotate(ringAngle);
+    ctx.scale(scale, scale);
+
+    // shadow under ring (screen space-ish)
+    ctx.save();
+    ctx.rotate(-ringAngle);
+    ctx.beginPath();
+    ctx.ellipse(0, 18+idx*1.2, (r1+14)*1.00, (r1+14)*0.42, 0, 0, TAU);
+    ctx.fillStyle = "rgba(0,0,0,.22)";
+    ctx.fill();
+    ctx.restore();
+
+    // bevel highlight band (outer)
+    const bevel = ctx.createRadialGradient(0,0,r0, 0,0,r1+18);
+    bevel.addColorStop(0.0, "rgba(255,255,255,0)");
+    bevel.addColorStop(0.62, "rgba(255,255,255,0)");
+    bevel.addColorStop(0.80, "rgba(255,255,255,.10)");
+    bevel.addColorStop(1.0, "rgba(0,0,0,.18)");
+
+    // side wall segments
+    for (let i=0;i<SLOTS;i++){
+      const a0=i*SLOT_ANG, a1=(i+1)*SLOT_ANG;
+      const isHole = ring.holeSet.has(i) && !ring.filled.has(i);
+      if (isHole) continue;
+
+      ctx.beginPath();
+      ctx.arc(0,0, r1, a0, a1);
+      ctx.arc(0,0, r1 - ringW*0.30, a1, a0, true);
+      ctx.closePath();
+      const sg = ctx.createLinearGradient(0,-r1,0,r1);
+      sg.addColorStop(0, COL.side);
+      sg.addColorStop(1, COL.sideDark);
+      ctx.fillStyle = sg;
+      ctx.fill();
+    }
+
+    // top face segments
+    for (let i=0;i<SLOTS;i++){
+      const a0=i*SLOT_ANG, a1=(i+1)*SLOT_ANG;
+      const isHole = ring.holeSet.has(i) && !ring.filled.has(i);
+
+      ctx.beginPath();
+      ctx.arc(0,0, r1 - ringW*0.10, a0, a1);
+      ctx.arc(0,0, r0, a1, a0, true);
+      ctx.closePath();
+
+      if (isHole){
+        // hole with soft depth
+        const hg = ctx.createRadialGradient(Math.cos((a0+a1)/2)*r0, Math.sin((a0+a1)/2)*r0, 2,
+                                            0,0,r1);
+        hg.addColorStop(0, "rgba(0,0,0,.38)");
+        hg.addColorStop(1, COL.hole);
+        ctx.fillStyle = hg;
+        ctx.fill();
+      } else {
+        // subtle top gradient
+        const tg = ctx.createLinearGradient(-r1*0.6,-r1*0.6,r1*0.6,r1*0.6);
+        tg.addColorStop(0, "rgba(255,255,255,.18)");
+        tg.addColorStop(0.35, COL.top);
+        tg.addColorStop(1, "rgba(0,0,0,.06)");
+        ctx.fillStyle = tg;
+        ctx.fill();
+      }
+
+      // seam line (only for solid)
+      if (!isHole){
+        ctx.save();
+        ctx.strokeStyle = COL.seam;
+        ctx.lineWidth = 1.35;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a0)*r0, Math.sin(a0)*r0);
+        ctx.lineTo(Math.cos(a0)*(r1-ringW*0.10), Math.sin(a0)*(r1-ringW*0.10));
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // overlay bevel
+    ctx.fillStyle = bevel;
+    ctx.beginPath();
+    ctx.arc(0,0, r1, 0, TAU);
+    ctx.arc(0,0, r0, TAU, 0, true);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function drawHub(L){
+    const {cx, cy, baseR} = L;
+    ctx.save();
+    ctx.translate(cx, cy);
+    // shadow
+    ctx.beginPath();
+    ctx.arc(0,0, baseR*0.29, 0, TAU);
+    ctx.fillStyle = "rgba(0,0,0,.18)";
+    ctx.fill();
+    // hub
+    const hg = ctx.createRadialGradient(-baseR*0.08,-baseR*0.08,2, 0,0, baseR*0.34);
+    hg.addColorStop(0, "rgba(255,255,255,.45)");
+    hg.addColorStop(0.45, COL.hub);
+    hg.addColorStop(1, "rgba(0,0,0,.10)");
+    ctx.beginPath();
+    ctx.arc(0,0, baseR*0.27, 0, TAU);
+    ctx.fillStyle = hg;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawIncomingPiece(L){
+    if (!piece) return;
+    const {cx, ringW} = L;
+    const w = Math.max(30, ringW*1.12) * (piece.lenSlots===2 ? 1.42 : 1.0);
+    const h = Math.max(88, ringW*3.05) + piece.lenSlots*10;
+
+    ctx.save();
+    ctx.translate(cx, piece.y);
+
+    // shadow
+    ctx.beginPath();
+    ctx.ellipse(0, 46, w*0.55, 18, 0, 0, TAU);
+    ctx.fillStyle = "rgba(0,0,0,.22)";
+    ctx.fill();
+
+    // top with gradient
+    const tg = ctx.createLinearGradient(-w*0.4,-h*0.6,w*0.4,h*0.3);
+    tg.addColorStop(0, "rgba(255,255,255,.18)");
+    tg.addColorStop(0.35, COL.top);
+    tg.addColorStop(1, "rgba(0,0,0,.06)");
+
+    ctx.beginPath();
+    ctx.moveTo(-w*0.62,  h*0.30);
+    ctx.lineTo( w*0.62,  h*0.30);
+    ctx.lineTo( w*0.32, -h*0.55);
+    ctx.lineTo(-w*0.32, -h*0.55);
+    ctx.closePath();
+    ctx.fillStyle = tg;
+    ctx.fill();
+
+    // side band
+    const sg = ctx.createLinearGradient(0, h*0.30, 0, h*0.52);
+    sg.addColorStop(0, COL.side);
+    sg.addColorStop(1, COL.sideDark);
+
+    ctx.beginPath();
+    ctx.moveTo(-w*0.62,  h*0.30);
+    ctx.lineTo( w*0.62,  h*0.30);
+    ctx.lineTo( w*0.62,  h*0.50);
+    ctx.lineTo(-w*0.62,  h*0.50);
+    ctx.closePath();
+    ctx.fillStyle = sg;
+    ctx.fill();
+
+    // seam
+    ctx.strokeStyle = COL.seam;
+    ctx.lineWidth = 1.15;
+    ctx.beginPath();
+    ctx.moveTo(-w*0.40,  h*0.10);
+    ctx.lineTo( w*0.40,  h*0.10);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // ===================== Loop =====================
+  let last = performance.now();
+  function tick(now){
+    const dt = Math.min(0.033, (now-last)/1000);
+    last = now;
+
+    if (!paused && !isShopOpen()){
+      // inertia
+      if (!pointerDown){
+        ringAngle += ringVel * dt * 60;
+        ringVel *= Math.pow(0.90, dt*60);
+        if (Math.abs(ringVel) < 0.00001) ringVel = 0;
+      }
+
+      // miss timer
+      if (missResetTimer > 0){
+        missResetTimer -= dt;
+        if (missResetTimer <= 0){
+          missEl.style.display = "none";
+          resetRunOnly();
+        }
+      }
+
+      // pop anim
+      const outer = activeRing();
+      if (outer && outer.popping){
+        outer.popT = clamp(outer.popT + dt*1.2, 0, 1);
+        if (outer.popT >= 1){
+          removeOuterRing();
+          piece = null;
+          scheduleNextSpawn();
+        }
+      }
+
+      // piece motion
+      if (piece && outer && !outer.popping && missResetTimer <= 0){
+        const L = layout();
+        const targetY = L.cy + L.baseR + L.ringW + 65;
+
+        if (piece.state === "rise"){
+          // tuned speed (not too fast)
+          piece.vy += 820 * dt;
+          piece.y  -= piece.vy * dt;
+
+          if (piece.y <= targetY){
+            const best = findBestHoleForPiece(outer, piece.lenSlots);
+            const SNAP_TOL = 0.20;
+            if (best && best.d <= SNAP_TOL){
+              piece.state = "snap";
+              piece.snapT = 0;
+              commitFill(outer, best.start, piece.lenSlots);
+            } else {
+              piece = null;
+              triggerMissReset();
+            }
+          }
+        } else if (piece.state === "snap"){
+          piece.snapT = clamp(piece.snapT + dt*5, 0, 1);
+          piece.y = lerp(piece.y, targetY+16, 1 - Math.pow(1-piece.snapT, 2));
+          if (piece.snapT >= 1){
+            piece = null;
+            if (outer && isRingComplete(outer)) popOuterRing();
+            else scheduleNextSpawn();
+          }
+        }
+      }
+
+      // auto spawn
+      if (!piece && missResetTimer <= 0){
+        dropCooldown -= dt;
+        if (dropCooldown <= 0) spawnPiece();
+      }
+    }
+
+    // draw
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    const L = layout();
+    drawBackground();
+    drawPedestal(L);
+    drawCenterPlate(L);
+
+    for (let i=0;i<rings.length;i++){
+      drawRing3D(L, rings[i], i);
+    }
+    drawHub(L);
+    drawIncomingPiece(L);
+
+    // HUD
+    const outer = activeRing();
+    const open = outer ? holesRemaining(outer) : 0;
+    const cd = Math.max(0, dropCooldown);
+    const skinName = (SKINS.find(s=>s.id===equippedSkinId) || SKINS[0]).name;
+
+    info.innerHTML =
+      `Score: <b>${score}</b> · Best: <b>${bestScore}</b> · Coins: <b>${coins}</b><br/>` +
+      `Ringe sichtbar: ${rings.length} · Outer offene Slots: ${open}<br/>` +
+      `Nächster Drop: ${piece ? "läuft" : cd.toFixed(2)+"s"} · Intervall: ${baseCooldown().toFixed(2)}s<br/>` +
+      `Skin: <b>${skinName}</b> · Coins-Bonus in: <b>${3 - ringsPoppedSinceCoin}</b> Ring(en)`;
+
+    requestAnimationFrame(tick);
+  }
+
+  // ===================== Controls =====================
+  resetBtn.addEventListener('click', resetAll);
+  pauseBtn.addEventListener('click', ()=>{
+    paused = !paused;
+    pauseBtn.textContent = paused ? "Weiter" : "Pause";
+  });
+
+  // ===================== Init =====================
+  loadSave();
+  applySkin();
+  scheduleNextSpawn();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
