@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <title>Circle Tetris – Rundes Tetris</title>
+  <style>
+    html,body{margin:0;height:100%;overflow:hidden;background:#070b17;}
+    canvas{display:block;width:100vw;height:100vh;touch-action:none;}
+    #hud{
+      position:fixed;left:12px;top:12px;z-index:10;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#e9eefb;background:rgba(8,10,18,.55);
+      border:1px solid rgba(255,255,255,.10);
+      padding:10px 12px;border-radius:14px;line-height:1.25;
+      user-select:none;-webkit-user-select:none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      min-width: 280px;
+    }
+    #hud b{color:#fff}
+    #small{font-size:12.75px;opacity:.94;margin-top:6px;max-width:720px}
+    #row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    button{
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:12px;padding:8px 10px;
+      background:rgba(255,255,255,.10);
+      color:#fff;cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    .kbd{
+      display:inline-block;padding:2px 7px;border-radius:9px;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.08);
+      font-size:12px;transform:translateY(-1px)
+    }
+    #toast{
+      position:fixed;left:50%;top:20px;transform:translateX(-50%);
+      z-index:20;display:none;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#fff;
+      background:rgba(10,14,24,.92);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:999px;
+      padding:8px 12px;
+      box-shadow:0 20px 60px rgba(0,0,0,.35);
+      user-select:none;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <b>Circle Tetris</b><br/>
+    Wischen = drehen · Tippen = Soft-Drop · <span class="kbd">Space</span> = Hard-Drop<br/>
+    Outer Ring voll ⇒ weg + alles rückt nach außen<br/>
+    <div id="small"></div>
+    <div id="row">
+      <button id="resetBtn">Reset</button>
+      <button id="pauseBtn">Pause</button>
+    </div>
+  </div>
+  <div id="toast"></div>
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', {alpha:true});
+  const info = document.getElementById('small');
+  const resetBtn = document.getElementById('resetBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const toastEl = document.getElementById('toast');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.style.display = "block";
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(()=>toastEl.style.display="none", 1200);
+  }
+
+  function resize(){
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    canvas.width  = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+  }
+  addEventListener('resize', resize, {passive:true});
+  resize();
+
+  const TAU = Math.PI*2;
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const normAngle = a => ((a%TAU)+TAU)%TAU;
+
+  // ring 0 = outermost (outer ring to clear)
+  const RINGS = 9;
+  const SLOTS = 24;
+  const SLOT_ANG = TAU / SLOTS;
+
+  let board = Array.from({length:RINGS}, ()=>Array(SLOTS).fill(0));
+
+  const COL = {
+    bgTop:"#0b1020", bgBot:"#071021",
+    pedestal:"#a4b1cb", pedestalDark:"#7786a7", pedestalSide:"#627198",
+    tile:"#f2e7a6", tile2:"#1b7e78",
+    hole:"rgba(0,0,0,.30)",
+    seam:"rgba(150,140,90,.35)",
+    accent:"#ff2a2a"
+  };
+
+  function layout(){
+    const W=innerWidth, H=innerHeight;
+    const cx=W*0.5, cy=H*0.30;
+    const ringW = Math.max(14, Math.min(26, Math.min(W,H)*0.028));
+    const baseR = Math.min(W,H)*0.30;
+    return {cx,cy,ringW,baseR};
+  }
+
+  // Shapes in polar grid (no rotation, you rotate around by shifting slot)
+  const SHAPES = [
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:0,ds:2},{dr:0,ds:3}],                 // I
+    [{dr:0,ds:0},{dr:1,ds:0},{dr:2,ds:0},{dr:3,ds:0}],                 // I vertical
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:1,ds:0},{dr:1,ds:1}],                 // O
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:0,ds:2},{dr:1,ds:1}],                 // T
+    [{dr:0,ds:0},{dr:1,ds:0},{dr:2,ds:0},{dr:2,ds:1}],                 // L
+    [{dr:0,ds:1},{dr:1,ds:1},{dr:2,ds:1},{dr:2,ds:0}],                 // J
+    [{dr:0,ds:1},{dr:0,ds:2},{dr:1,ds:0},{dr:1,ds:1}],                 // S
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:1,ds:1},{dr:1,ds:2}],                 // Z
+  ];
+  function randChoice(arr){ return arr[(Math.random()*arr.length)|0]; }
+
+  function newPiece(){
+    const cells = randChoice(SHAPES).map(c=>({...c}));
+    return { cells, ring:-4, slot:Math.floor(Math.random()*SLOTS), speed:1.0, soft:false };
+  }
+
+  let current = newPiece();
+  let next = newPiece();
+
+  function collides(piece, ringOverride=null, slotOverride=null){
+    const ringBase = (ringOverride!==null) ? ringOverride : piece.ring;
+    const slotBase = (slotOverride!==null) ? slotOverride : piece.slot;
+    for (const c of piece.cells){
+      const r = ringBase + c.dr;
+      const s = (slotBase + c.ds) % SLOTS;
+      if (r >= RINGS) return true;
+      if (r < 0) continue;
+      if (board[r][(s+SLOTS)%SLOTS]) return true;
+    }
+    return false;
+  }
+
+  function lockPiece(piece){
+    for (const c of piece.cells){
+      const r = piece.ring + c.dr;
+      const s = (piece.slot + c.ds) % SLOTS;
+      if (r < 0 || r >= RINGS) continue;
+      board[r][(s+SLOTS)%SLOTS] = 1;
+    }
+  }
+
+  function outerRingFull(){
+    for (let s=0;s<SLOTS;s++) if (!board[0][s]) return false;
+    return true;
+  }
+
+  function clearOuterRingAndShift(){
+    for (let r=0;r<RINGS-1;r++) board[r] = board[r+1];
+    board[RINGS-1] = Array(SLOTS).fill(0);
+  }
+
+  let score=0, best=0, coins=0, clearsForCoins=0;
+  function awardClear(n){
+    score += 150*n;
+    clearsForCoins += n;
+    if (clearsForCoins >= 3){
+      const batches = Math.floor(clearsForCoins/3);
+      coins += batches*3;
+      clearsForCoins = clearsForCoins % 3;
+    }
+    if (score > best) best = score;
+  }
+
+  function isGameOverOnSpawn(){
+    let testRing = current.ring;
+    while (testRing < 0) testRing++;
+    return collides(current, testRing, current.slot);
+  }
+
+  let paused=false;
+  let pointerDown=false, lastX=0, lastT=0;
+
+  function onDown(e){
+    if (paused) return;
+    if (document.getElementById('hud').contains(e.target)) return;
+    pointerDown=true;
+    lastX=e.clientX;
+    lastT=performance.now();
+    canvas.setPointerCapture(e.pointerId);
+  }
+  function onMove(e){
+    if (!pointerDown || paused) return;
+    const x=e.clientX;
+    const t=performance.now();
+    const dx=x-lastX;
+    const dt=Math.max(8, t-lastT);
+    lastX=x; lastT=t;
+
+    const steps = Math.round(dx/18);
+    if (steps){
+      const ns = (current.slot + steps) % SLOTS;
+      if (!collides(current, current.ring, ns)) current.slot = ns;
+    }
+  }
+  function onUp(e){
+    pointerDown=false;
+    try{ canvas.releasePointerCapture(e.pointerId);}catch{}
+  }
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onUp);
+
+  canvas.addEventListener('click', (e)=>{
+    if (paused) return;
+    if (document.getElementById('hud').contains(e.target)) return;
+    softDropBurst();
+  });
+
+  function softDropBurst(){
+    for (let i=0;i<2;i++){
+      inwardAcc += 1.0;
+      if (!stepDiscrete()) break;
+    }
+  }
+
+  addEventListener('keydown', (e)=>{
+    if (e.key==="ArrowLeft"){
+      e.preventDefault();
+      const ns=(current.slot-1+SLOTS)%SLOTS;
+      if (!collides(current, current.ring, ns)) current.slot=ns;
+    } else if (e.key==="ArrowRight"){
+      e.preventDefault();
+      const ns=(current.slot+1)%SLOTS;
+      if (!collides(current, current.ring, ns)) current.slot=ns;
+    } else if (e.key===" "){
+      e.preventDefault();
+      hardDrop();
+    } else if (e.key==="p"||e.key==="P"){
+      togglePause();
+    }
+  });
+
+  function hardDrop(){
+    // keep moving inward until next would collide
+    while (true){
+      const nextRing = current.ring + 1;
+      if (collides(current, nextRing, current.slot)){
+        finalizeLock();
+        break;
+      } else {
+        current.ring = nextRing;
+        if (current.ring > RINGS+4) break;
+      }
+    }
+  }
+
+  function finalizeLock(){
+    if (current.ring < 0){
+      current.ring = 0;
+      if (collides(current, current.ring, current.slot)){
+        gameOver();
+        return;
+      }
+    }
+    lockPiece(current);
+
+    let cleared=0;
+    while (outerRingFull()){
+      clearOuterRingAndShift();
+      cleared++;
+    }
+    if (cleared){
+      awardClear(cleared);
+      toast("+"+cleared+" Ring Clear!");
+    }
+
+    current = next;
+    next = newPiece();
+    inwardAcc = 0;
+
+    if (isGameOverOnSpawn()) gameOver();
+  }
+
+  let inwardAcc=0;
+  function stepDiscrete(){
+    while (inwardAcc >= 1.0){
+      inwardAcc -= 1.0;
+      const nextRing = current.ring + 1;
+      if (collides(current, nextRing, current.slot)){
+        finalizeLock();
+        return false;
+      } else current.ring = nextRing;
+    }
+    return true;
+  }
+
+  let last=performance.now();
+  function update(now){
+    const dt=Math.min(0.033,(now-last)/1000);
+    last=now;
+
+    if (!paused){
+      inwardAcc += current.speed * dt;
+      stepDiscrete();
+    }
+    render();
+    requestAnimationFrame(update);
+  }
+
+  function gameOver(){
+    paused=true;
+    pauseBtn.textContent="Weiter";
+    toast("Game Over – Reset?");
+  }
+  function resetGame(){
+    board = Array.from({length:RINGS}, ()=>Array(SLOTS).fill(0));
+    score=0; clearsForCoins=0;
+    current=newPiece(); next=newPiece();
+    inwardAcc=0;
+    paused=false;
+    pauseBtn.textContent="Pause";
+  }
+  function togglePause(){
+    paused=!paused;
+    pauseBtn.textContent = paused ? "Weiter" : "Pause";
+  }
+  resetBtn.addEventListener('click', resetGame);
+  pauseBtn.addEventListener('click', togglePause);
+
+  function drawBackground(){
+    const g=ctx.createLinearGradient(0,0,0,innerHeight);
+    g.addColorStop(0,COL.bgTop); g.addColorStop(1,COL.bgBot);
+    ctx.fillStyle=g; ctx.fillRect(0,0,innerWidth,innerHeight);
+
+    const v=ctx.createRadialGradient(innerWidth*0.5, innerHeight*0.42, Math.min(innerWidth,innerHeight)*0.14,
+                                     innerWidth*0.5, innerHeight*0.42, Math.min(innerWidth,innerHeight)*0.95);
+    v.addColorStop(0,"rgba(0,0,0,0)");
+    v.addColorStop(1,"rgba(0,0,0,.48)");
+    ctx.fillStyle=v; ctx.fillRect(0,0,innerWidth,innerHeight);
+  }
+
+  function drawPlatform(L){
+    const pedR=L.baseR + L.ringW + 76;
+    ctx.save();
+    ctx.translate(L.cx, L.cy+18);
+
+    ctx.beginPath();
+    ctx.ellipse(0,2,pedR*1.06,pedR*0.58,0,0,TAU);
+    ctx.fillStyle="rgba(0,0,0,.40)";
+    ctx.fill();
+
+    const bodyH=84, topY=-48;
+    const sideGrad=ctx.createLinearGradient(0,topY,0,topY+bodyH);
+    sideGrad.addColorStop(0,COL.pedestalDark);
+    sideGrad.addColorStop(1,COL.pedestalSide);
+
+    ctx.fillStyle=sideGrad;
+    ctx.beginPath();
+    ctx.ellipse(0,topY+bodyH,pedR*0.98,pedR*0.50,0,0,TAU);
+    ctx.ellipse(0,topY,pedR*1.02,pedR*0.52,0,0,TAU);
+    ctx.fill("evenodd");
+
+    const topGrad=ctx.createLinearGradient(-pedR,topY,pedR,topY);
+    topGrad.addColorStop(0,COL.pedestalDark);
+    topGrad.addColorStop(0.55,COL.pedestal);
+    topGrad.addColorStop(1,"rgba(255,255,255,.12)");
+    ctx.beginPath();
+    ctx.ellipse(0,topY,pedR*1.02,pedR*0.52,0,0,TAU);
+    ctx.fillStyle=topGrad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(0,topY,pedR*0.82,pedR*0.42,0,0,TAU);
+    ctx.strokeStyle="rgba(0,0,0,.16)";
+    ctx.lineWidth=3;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawRingCells(L){
+    const {cx,cy,baseR,ringW}=L;
+    for (let r=0;r<RINGS;r++){
+      const outer=baseR - r*(ringW+8);
+      const inner=outer - ringW;
+
+      ctx.save();
+      ctx.translate(cx,cy);
+      ctx.beginPath();
+      ctx.ellipse(0,18+r*1.05,(outer+14),(outer+14)*0.42,0,0,TAU);
+      ctx.fillStyle="rgba(0,0,0,.18)";
+      ctx.fill();
+      ctx.restore();
+
+      for (let s=0;s<SLOTS;s++){
+        const a0=s*SLOT_ANG, a1=(s+1)*SLOT_ANG;
+        ctx.save();
+        ctx.translate(cx,cy);
+        ctx.beginPath();
+        ctx.arc(0,0,outer,a0,a1);
+        ctx.arc(0,0,inner,a1,a0,true);
+        ctx.closePath();
+
+        if (!board[r][s]){
+          ctx.fillStyle=COL.hole;
+          ctx.fill();
+        } else {
+          const tg=ctx.createLinearGradient(-outer*0.55,-outer*0.55,outer*0.55,outer*0.55);
+          tg.addColorStop(0,"rgba(255,255,255,.20)");
+          tg.addColorStop(0.35,COL.tile);
+          tg.addColorStop(1,"rgba(0,0,0,.08)");
+          ctx.fillStyle=tg;
+          ctx.fill();
+        }
+
+        ctx.strokeStyle=COL.seam;
+        ctx.lineWidth=1.0;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a0)*inner, Math.sin(a0)*inner);
+        ctx.lineTo(Math.cos(a0)*outer, Math.sin(a0)*outer);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // hub
+    ctx.save();
+    ctx.translate(cx,cy);
+    const hubR=baseR*0.20;
+    const hg=ctx.createRadialGradient(-hubR*0.2,-hubR*0.2,2, 0,0, hubR*1.5);
+    hg.addColorStop(0,"rgba(255,255,255,.45)");
+    hg.addColorStop(0.45,"rgba(255,255,255,.88)");
+    hg.addColorStop(1,"rgba(0,0,0,.10)");
+    ctx.beginPath();
+    ctx.arc(0,0,hubR,0,TAU);
+    ctx.fillStyle=hg; ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPiece(L, piece, ghost){
+    const {cx,cy,baseR,ringW}=L;
+    const alpha = ghost ? 0.35 : 1.0;
+
+    for (const c of piece.cells){
+      const rr = piece.ring + c.dr;
+      const ss = (piece.slot + c.ds) % SLOTS;
+      if (rr<0 || rr>=RINGS) continue;
+
+      const outer=baseR - rr*(ringW+8);
+      const inner=outer - ringW;
+      const a0=ss*SLOT_ANG, a1=(ss+1)*SLOT_ANG;
+
+      ctx.save();
+      ctx.translate(cx,cy);
+      ctx.globalAlpha=alpha;
+
+      ctx.beginPath();
+      ctx.arc(0,0,outer,a0,a1);
+      ctx.arc(0,0,inner,a1,a0,true);
+      ctx.closePath();
+
+      const tg=ctx.createLinearGradient(-outer*0.55,-outer*0.55,outer*0.55,outer*0.55);
+      tg.addColorStop(0, ghost ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.22)");
+      tg.addColorStop(0.42, COL.tile2);
+      tg.addColorStop(1, "rgba(0,0,0,.10)");
+      ctx.fillStyle=tg;
+      ctx.fill();
+
+      ctx.strokeStyle="rgba(255,255,255,.14)";
+      ctx.lineWidth=1.0;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function computeGhost(){
+    const p = {cells:current.cells, ring:current.ring, slot:current.slot, speed:1, soft:false};
+    while (!collides(p, p.ring+1, p.slot)) p.ring++;
+    if (p.ring < 0) p.ring = 0;
+    return p;
+  }
+
+  function render(){
+    const L=layout();
+    drawBackground();
+    drawPlatform(L);
+    drawRingCells(L);
+
+    if (!paused){
+      drawPiece(L, computeGhost(), true);
+    }
+    drawPiece(L, current, false);
+
+    info.innerHTML =
+      `Score: <b>${score}</b> · Best: <b>${best}</b> · Coins: <b>${coins}</b><br/>`+
+      `Outer-Clear Coins in: <b>${3 - clearsForCoins}</b> Clear(s) · Next-Piece: <b>${next.cells.length}</b> Blocks`;
+  }
+
+  requestAnimationFrame(update);
+})();
+</script>
+</body>
+</html>
