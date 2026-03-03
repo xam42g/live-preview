@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+  <title>Circle Tetris – Premium Touch (v5)</title>
+  <style>
+    :root{
+      --panel: rgba(10,14,24,.62);
+      --border: rgba(255,255,255,.12);
+      --text: #e9eefb;
+    }
+    html,body{margin:0;height:100%;overflow:hidden;background:#050915;}
+    canvas{display:block;width:100vw;height:100vh;touch-action:none;}
+    #hud{
+      position:fixed;left:12px;top:12px;z-index:10;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:var(--text);background:var(--panel);
+      border:1px solid var(--border);
+      padding:10px 12px;border-radius:14px;line-height:1.25;
+      user-select:none;-webkit-user-select:none;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+      max-width:min(520px, calc(100vw - 24px));
+    }
+    #hud b{color:#fff}
+    #small{font-size:12.75px;opacity:.95;margin-top:6px}
+    #row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    button{
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:12px;padding:8px 10px;
+      background:rgba(255,255,255,.10);
+      color:#fff;cursor:pointer;
+    }
+    button:active{transform:translateY(1px)}
+    #toast{
+      position:fixed;left:50%;top:14px;transform:translateX(-50%);
+      z-index:20;display:none;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      color:#fff;
+      background:rgba(10,14,24,.92);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:999px;
+      padding:8px 12px;
+      box-shadow:0 20px 60px rgba(0,0,0,.35);
+      user-select:none;
+    }
+    /* Bottom controls (safe-area aware) */
+    #controls{
+      position:fixed;left:50%;
+      bottom:calc(14px + env(safe-area-inset-bottom));
+      transform:translateX(-50%);
+      z-index:12;
+      display:flex;flex-direction:column;gap:10px;
+      width:min(720px, calc(100vw - 24px));
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      user-select:none;-webkit-user-select:none;
+    }
+    #bar{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:16px;
+      padding:10px 12px;
+      box-shadow:0 16px 40px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display:flex;align-items:center;gap:10px;
+    }
+    #bar label{font-size:12.5px;opacity:.9;white-space:nowrap}
+    input[type="range"]{
+      width:100%;
+      accent-color:#44d1c8;
+    }
+    #btnRow{
+      display:flex;gap:10px;justify-content:center;flex-wrap:wrap;
+    }
+    .pill{
+      background:var(--panel);
+      border:1px solid var(--border);
+      color:#fff;
+      border-radius:999px;
+      padding:10px 14px;
+      box-shadow:0 16px 40px rgba(0,0,0,.28);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      cursor:pointer;
+      min-width: 86px;
+      text-align:center;
+    }
+    .pill:active{transform:translateY(1px)}
+    #hint{
+      position:fixed;left:50%;
+      bottom:calc(120px + env(safe-area-inset-bottom));
+      transform:translateX(-50%);
+      z-index:11;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      font-size:12.5px;
+      color:rgba(255,255,255,.86);
+      background:rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.08);
+      padding:6px 10px;border-radius:999px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      user-select:none;-webkit-user-select:none;
+      max-width:min(680px, calc(100vw - 24px));
+      text-align:center;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <b>Circle Tetris – Touch Premium (v5)</b><br/>
+    Wischen links/rechts = <b>Scheibe drehen</b> · Tippen = Drop · Hard = ganz rein<br/>
+    <div id="small"></div>
+    <div id="row">
+      <button id="resetBtn">Reset</button>
+      <button id="pauseBtn">Pause</button>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="hint">Tipp: Swipe zum Drehen + Dreh-Bar unten für „direkt dahin“. Größere, bunte Segmente.</div>
+
+  <div id="controls">
+    <div id="bar">
+      <label>Rotation</label>
+      <input id="rotSlider" type="range" min="-12" max="12" value="0" step="1"/>
+      <label id="rotVal" style="font-size:12.5px;opacity:.9;min-width:44px;text-align:right;">0</label>
+    </div>
+    <div id="btnRow">
+      <div class="pill" id="leftBtn">⟲</div>
+      <div class="pill" id="dropBtn">Drop</div>
+      <div class="pill" id="rightBtn">⟳</div>
+      <div class="pill" id="hardBtn">Hard</div>
+    </div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', {alpha:true});
+
+  const info = document.getElementById('small');
+  const resetBtn = document.getElementById('resetBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const toastEl = document.getElementById('toast');
+
+  const leftBtn = document.getElementById('leftBtn');
+  const rightBtn = document.getElementById('rightBtn');
+  const dropBtn = document.getElementById('dropBtn');
+  const hardBtn = document.getElementById('hardBtn');
+
+  const rotSlider = document.getElementById('rotSlider');
+  const rotVal = document.getElementById('rotVal');
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.style.display = "block";
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(()=>toastEl.style.display="none", 1100);
+  }
+
+  function resize(){
+    const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    canvas.width  = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+  }
+  addEventListener('resize', resize, {passive:true});
+  resize();
+
+  const TAU = Math.PI*2;
+
+  // ===== Board settings (bigger blocks) =====
+  const RINGS = 6;
+  const SLOTS = 18;               // fewer slots => bigger blocks (more "block-like")
+  const SLOT_ANG = TAU / SLOTS;
+  const BOTTOM_SLOT = Math.floor(SLOTS * 0.25); // bottom direction
+
+  // board holds 0 = empty, otherwise colorIndex+1
+  let board = Array.from({length:RINGS}, ()=>Array(SLOTS).fill(0));
+
+  // rotation: float target, snapped int for logic
+  let rotTarget = 0;      // float
+  let rotRender = 0;      // float (smoothed)
+  const rotSnap = ()=>Math.round(rotTarget);
+
+  // ===== Colors (more colorful) =====
+  const PALETTE = [
+    ["#44d1c8","#1b7e78"], // teal
+    ["#ffcc66","#c98b2b"], // gold
+    ["#ff6b6b","#b73a3a"], // red
+    ["#7c5cff","#4b2fbf"], // purple
+    ["#59d98e","#2d8f5a"], // green
+    ["#4aa3ff","#1e5ea8"], // blue
+  ];
+
+  const COL = {
+    bgTop:"#060a18", bgBot:"#020512",
+    hole:"#0a1022", hole2:"#070b17",
+    seam:"rgba(255,255,255,.10)",
+    stroke:"rgba(255,255,255,.18)",
+    shadow:"rgba(0,0,0,.25)",
+    accent:"rgba(255,45,45,.95)"
+  };
+
+  function layout(){
+    const W=innerWidth, H=innerHeight;
+    const safeTop = 0;
+    const safeBottom = 170; // keep away from bottom controls
+    const availH = H - safeTop - safeBottom;
+    const cx = W*0.5;
+    const cy = safeTop + availH*0.54;
+    const baseR = Math.min(W*0.46, availH*0.48);
+    const ringW = Math.max(22, Math.min(46, baseR/(RINGS+0.7))); // larger segments
+    return {cx,cy,baseR,ringW};
+  }
+
+  function ringRadii(L, r){
+    const gap = 10;
+    const outer = L.baseR - r*(L.ringW+gap);
+    const inner = outer - L.ringW;
+    return {inner, outer};
+  }
+
+  // ===== Piece definitions (multi-depth) =====
+  const SHAPES = [
+    [{dr:0,ds:0}],
+    [{dr:0,ds:0},{dr:0,ds:1}],
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:0,ds:2}],
+    [{dr:0,ds:0},{dr:1,ds:0}],
+    [{dr:0,ds:0},{dr:1,ds:0},{dr:2,ds:0}], // 3 deep
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:1,ds:0},{dr:1,ds:1}],
+    [{dr:0,ds:0},{dr:0,ds:1},{dr:0,ds:2},{dr:1,ds:1}],
+    [{dr:0,ds:0},{dr:1,ds:0},{dr:2,ds:0},{dr:2,ds:1}],
+    [{dr:0,ds:1},{dr:1,ds:1},{dr:2,ds:1},{dr:2,ds:0}],
+  ];
+  const randChoice = arr => arr[(Math.random()*arr.length)|0];
+  const mod = (n,m)=>((n%m)+m)%m;
+
+  function newPiece(){
+    const cells = randChoice(SHAPES).map(c=>({...c}));
+    const color = (Math.random()*PALETTE.length)|0;
+    return {
+      cells,
+      ring:-3,
+      slot:BOTTOM_SLOT,    // fixed world
+      color,
+    };
+  }
+
+  let current = newPiece();
+  let next = newPiece();
+
+  // ===== Levels (Stufen) =====
+  let level = 1;
+  let clearsTotal = 0;
+  let baseSpeed = 1.35; // base inward speed
+  function speed(){ return baseSpeed + (level-1)*0.20; }
+
+  // ===== Collision / mapping =====
+  // board slot = world slot - rotSnap
+  function worldToBoardSlot(worldSlot, rot=rotSnap()){
+    return mod(Math.round(worldSlot - rot), SLOTS);
+  }
+
+  function collides(piece, ringBase=piece.ring, rot=rotSnap()){
+    for (const c of piece.cells){
+      const r = ringBase + c.dr;
+      const ws = piece.slot + c.ds;
+      const bs = worldToBoardSlot(ws, rot);
+      if (r >= RINGS) return true;
+      if (r < 0) continue;
+      if (board[r][bs]) return true;
+    }
+    return false;
+  }
+
+  function lockPiece(piece){
+    const rot = rotSnap();
+    for (const c of piece.cells){
+      const r = piece.ring + c.dr;
+      const ws = piece.slot + c.ds;
+      const bs = worldToBoardSlot(ws, rot);
+      if (r < 0 || r >= RINGS) continue;
+      board[r][bs] = piece.color + 1;
+    }
+  }
+
+  function fullRing(r){
+    for (let s=0;s<SLOTS;s++) if (!board[r][s]) return false;
+    return true;
+  }
+
+  function clearAllFullRings(){
+    let cleared=0;
+    for (let r=0;r<RINGS;r++){
+      if (fullRing(r)){
+        for (let k=r;k<RINGS-1;k++) board[k]=board[k+1];
+        board[RINGS-1]=Array(SLOTS).fill(0);
+        cleared++; r--;
+      }
+    }
+    return cleared;
+  }
+
+  // ===== Score / state =====
+  let score=0, best=0;
+  let paused=false;
+
+  function award(cleared){
+    if (!cleared) return;
+    score += cleared * (200 + level*25);
+    if (score>best) best=score;
+
+    clearsTotal += cleared;
+    const newLevel = 1 + Math.floor(clearsTotal / 4); // every 4 ring-clears => new level
+    if (newLevel !== level){
+      level = newLevel;
+      toast("Level " + level);
+    } else {
+      toast("+"+cleared+" Ring!");
+    }
+  }
+
+  function gameOverCheckOnSpawn(){
+    return collides(current, 0, rotSnap());
+  }
+
+  // ===== Controls =====
+  function tryRotateTo(newRotTarget){
+    const candidateSnap = Math.round(newRotTarget);
+    if (current.ring >= 0 && collides(current, current.ring, candidateSnap)) return false;
+    rotTarget = newRotTarget;
+    return true;
+  }
+
+  function rotateDiskSteps(steps){
+    tryRotateTo(rotTarget + steps);
+  }
+
+  leftBtn.addEventListener('pointerdown', (e)=>{ e.preventDefault(); rotateDiskSteps(-1); syncSlider(); });
+  rightBtn.addEventListener('pointerdown', (e)=>{ e.preventDefault(); rotateDiskSteps(+1); syncSlider(); });
+  dropBtn.addEventListener('pointerdown', (e)=>{ e.preventDefault(); softDrop(); });
+  hardBtn.addEventListener('pointerdown', (e)=>{ e.preventDefault(); hardDrop(); });
+
+  // Slider: "direct"
+  function syncSlider(){
+    // keep slider within [-12..12] visual, centered
+    const snap = rotSnap();
+    const clamped = Math.max(-12, Math.min(12, snap));
+    rotSlider.value = String(clamped);
+    rotVal.textContent = String(snap);
+  }
+  rotSlider.addEventListener('input', ()=>{
+    const v = parseInt(rotSlider.value,10) || 0;
+    // This is a relative rotation around 0 baseline; set target to v (fast & direct)
+    tryRotateTo(v);
+    rotVal.textContent = String(rotSnap());
+  });
+
+  // Swipe: smooth feel + snap
+  let dragging=false, lastX=0, vel=0;
+  let lastMoveT=0;
+
+  function isUI(target){
+    return document.getElementById('hud').contains(target) || document.getElementById('controls').contains(target);
+  }
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    if (paused) return;
+    if (isUI(e.target)) return;
+    dragging=true;
+    lastX=e.clientX;
+    vel=0;
+    lastMoveT=performance.now();
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e)=>{
+    if (!dragging || paused) return;
+    const now = performance.now();
+    const dx = e.clientX - lastX;
+    lastX = e.clientX;
+
+    // feel: convert pixels to fractional slot steps
+    const stepsFloat = dx / 26;
+    const before = rotTarget;
+    if (tryRotateTo(rotTarget + stepsFloat)){
+      // velocity for inertia
+      const dt = Math.max(1, now - lastMoveT);
+      vel = (rotTarget - before) / dt * 16.0;
+    }
+    lastMoveT = now;
+    syncSlider();
+  });
+
+  function endDrag(e){
+    if (!dragging) return;
+    dragging=false;
+    // snap nicely
+    rotTarget = rotSnap();
+    syncSlider();
+    try{ canvas.releasePointerCapture(e.pointerId);}catch{}
+  }
+
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', ()=>{ dragging=false; rotTarget=rotSnap(); syncSlider(); });
+
+  // Tap = soft drop
+  canvas.addEventListener('click', (e)=>{
+    if (paused) return;
+    if (isUI(e.target)) return;
+    softDrop();
+  });
+
+  addEventListener('keydown', (e)=>{
+    if (e.key==="ArrowLeft"){ e.preventDefault(); rotateDiskSteps(-1); syncSlider(); }
+    if (e.key==="ArrowRight"){ e.preventDefault(); rotateDiskSteps(+1); syncSlider(); }
+    if (e.key==="ArrowDown"){ e.preventDefault(); softDrop(); }
+    if (e.key===" "){ e.preventDefault(); hardDrop(); }
+    if (e.key==="p"||e.key==="P"){ togglePause(); }
+  });
+
+  // ===== Falling =====
+  let inwardAcc=0;
+  let last=performance.now();
+
+  function finalizeLock(){
+    if (current.ring < 0) current.ring = 0;
+
+    if (collides(current, current.ring, rotSnap())){
+      paused=true; pauseBtn.textContent="Weiter";
+      toast("Game Over");
+      return;
+    }
+
+    lockPiece(current);
+    const cleared = clearAllFullRings();
+    award(cleared);
+
+    current = next;
+    next = newPiece();
+    inwardAcc = 0;
+
+    if (gameOverCheckOnSpawn()){
+      paused=true; pauseBtn.textContent="Weiter";
+      toast("Game Over");
+    }
+  }
+
+  function stepInward(dt, boost){
+    inwardAcc += speed() * dt * (boost ? 4.0 : 1.0);
+    while (inwardAcc >= 1.0){
+      inwardAcc -= 1.0;
+      const nr = current.ring + 1;
+      if (collides(current, nr, rotSnap())){
+        finalizeLock();
+        return false;
+      } else {
+        current.ring = nr;
+      }
+    }
+    return true;
+  }
+
+  function softDrop(){
+    for (let i=0;i<2;i++){
+      if (!stepInward(0.08, true)) break;
+    }
+  }
+  function hardDrop(){
+    while (stepInward(0.08, true)) {}
+  }
+
+  function update(now){
+    const dt = Math.min(0.033, (now-last)/1000);
+    last = now;
+
+    // smooth rotation render (good feel)
+    rotRender += (rotTarget - rotRender) * 0.22;
+
+    if (!paused){
+      stepInward(dt, false);
+    }
+    render();
+    requestAnimationFrame(update);
+  }
+
+  // ===== Rendering (more block-like curved segments) =====
+  function drawBackground(){
+    const g=ctx.createLinearGradient(0,0,0,innerHeight);
+    g.addColorStop(0, COL.bgTop); g.addColorStop(1, COL.bgBot);
+    ctx.fillStyle=g; ctx.fillRect(0,0,innerWidth,innerHeight);
+
+    const v=ctx.createRadialGradient(innerWidth*0.5, innerHeight*0.5, Math.min(innerWidth,innerHeight)*0.15,
+                                     innerWidth*0.5, innerHeight*0.5, Math.min(innerWidth,innerHeight)*1.05);
+    v.addColorStop(0,"rgba(0,0,0,0)");
+    v.addColorStop(1,"rgba(0,0,0,.62)");
+    ctx.fillStyle=v; ctx.fillRect(0,0,innerWidth,innerHeight);
+  }
+
+  function arcCellPath(cx,cy,inner,outer,a0,a1){
+    // block-ish: shorten angle a tiny bit so seams look like blocks
+    const angPad = SLOT_ANG * 0.04;
+    const A0 = a0 + angPad;
+    const A1 = a1 - angPad;
+
+    // inset makes it feel like block sitting in a slot
+    const inset = Math.min(8, (outer-inner)*0.20);
+    const o = outer - inset*0.25;
+    const i = inner + inset*0.55;
+
+    ctx.beginPath();
+    ctx.arc(cx,cy,o,A0,A1);
+    ctx.arc(cx,cy,i,A1,A0,true);
+    ctx.closePath();
+    return {i,o,A0,A1};
+  }
+
+  function fillCell(cx,cy,inner,outer,a0,a1,fill,stroke){
+    arcCellPath(cx,cy,inner,outer,a0,a1);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke){
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  function drawBoard(L){
+    const {cx,cy}=L;
+
+    // subtle outer shadow
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx,cy,L.baseR+18,0,TAU);
+    ctx.fillStyle="rgba(0,0,0,.20)";
+    ctx.fill();
+    ctx.restore();
+
+    for (let r=0;r<RINGS;r++){
+      const {inner, outer}=ringRadii(L,r);
+      for (let s=0;s<SLOTS;s++){
+        const a0=(s + rotRender)*SLOT_ANG;
+        const a1=(s+1 + rotRender)*SLOT_ANG;
+
+        const val = board[r][s];
+        if (!val){
+          const hg=ctx.createLinearGradient(0,cy-outer,0,cy+outer);
+          hg.addColorStop(0, COL.hole2);
+          hg.addColorStop(1, COL.hole);
+          fillCell(cx,cy,inner,outer,a0,a1,hg,COL.seam);
+        } else {
+          const idx = val - 1;
+          const [top,side] = PALETTE[idx % PALETTE.length];
+          const tg=ctx.createLinearGradient(cx-outer*0.8,cy-outer*0.8,cx+outer*0.8,cy+outer*0.8);
+          tg.addColorStop(0,"rgba(255,255,255,.22)");
+          tg.addColorStop(0.28, top);
+          tg.addColorStop(0.72, side);
+          tg.addColorStop(1,"rgba(0,0,0,.18)");
+          fillCell(cx,cy,inner,outer,a0,a1,tg,COL.stroke);
+        }
+      }
+    }
+
+    // inlet line at bottom
+    ctx.save();
+    ctx.strokeStyle = COL.accent;
+    ctx.lineWidth = 4;
+    const y = cy + L.baseR + 56;
+    ctx.beginPath();
+    ctx.moveTo(cx - Math.min(innerWidth*0.25, 260), y);
+    ctx.lineTo(cx + Math.min(innerWidth*0.25, 260), y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPiece(L, piece, ghost=false){
+    const {cx,cy}=L;
+    const alpha = ghost ? 0.28 : 1.0;
+    const [top,side] = PALETTE[piece.color % PALETTE.length];
+
+    for (const c of piece.cells){
+      const rr = piece.ring + c.dr;
+      const ws = piece.slot + c.ds;
+      const bs = worldToBoardSlot(ws, rotSnap());
+
+      const a0=(bs + rotRender)*SLOT_ANG;
+      const a1=(bs+1 + rotRender)*SLOT_ANG;
+
+      const drawR = rr < 0 ? 0 : rr;
+      if (drawR >= RINGS) continue;
+
+      const {inner, outer} = ringRadii(L, drawR);
+
+      // outside: hover below (strong "from bottom" look)
+      const offset = rr < 0 ? (Math.abs(rr) * (L.ringW+10) + 16) : 0;
+      const o2 = outer + offset;
+      const i2 = inner + offset;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // shadow
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.65;
+      fillCell(cx+2,cy+3,i2,o2,a0,a1, COL.shadow, null);
+      ctx.restore();
+
+      const tg=ctx.createLinearGradient(cx-o2*0.9,cy-o2*0.9,cx+o2*0.9,cy+o2*0.9);
+      tg.addColorStop(0, ghost ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.25)");
+      tg.addColorStop(0.25, top);
+      tg.addColorStop(0.78, side);
+      tg.addColorStop(1, "rgba(0,0,0,.20)");
+
+      fillCell(cx,cy,i2,o2,a0,a1,tg, ghost ? "rgba(255,255,255,.10)" : COL.stroke);
+
+      ctx.restore();
+    }
+  }
+
+  function computeGhost(){
+    const p = {cells:current.cells, ring:current.ring, slot:current.slot, color:current.color};
+    while (!collides(p, p.ring+1, rotSnap())) p.ring++;
+    if (p.ring < 0) p.ring = 0;
+    return p;
+  }
+
+  function render(){
+    const L=layout();
+    drawBackground();
+    drawBoard(L);
+
+    if (!paused) drawPiece(L, computeGhost(), true);
+    drawPiece(L, current, false);
+
+    info.innerHTML =
+      `Score: <b>${score}</b> · Best: <b>${best}</b> · Level: <b>${level}</b><br/>`+
+      `Ringe: <b>${RINGS}</b> · Blöcke groß (Slots: <b>${SLOTS}</b>) · Speed: <b>${speed().toFixed(2)}</b>`;
+  }
+
+  // ===== UI =====
+  function resetGame(){
+    board = Array.from({length:RINGS}, ()=>Array(SLOTS).fill(0));
+    score=0;
+    level=1;
+    clearsTotal=0;
+    rotTarget=0; rotRender=0;
+    current=newPiece();
+    next=newPiece();
+    inwardAcc=0;
+    paused=false;
+    pauseBtn.textContent="Pause";
+    syncSlider();
+    toast("Reset");
+  }
+  function togglePause(){
+    paused=!paused;
+    pauseBtn.textContent = paused ? "Weiter" : "Pause";
+  }
+  resetBtn.addEventListener('click', resetGame);
+  pauseBtn.addEventListener('click', togglePause);
+
+  syncSlider();
+  requestAnimationFrame(update);
+})();
+</script>
+</body>
+</html>
