@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Round Tetris – v4</title>
+<style>
+html,body{margin:0;height:100%;background:#050915;overflow:hidden;touch-action:none}
+canvas{display:block;width:100vw;height:100vh;touch-action:none}
+#ui{position:fixed;top:10px;left:10px;color:#fff;font-family:sans-serif;font-weight:700}
+button{margin-top:6px;padding:6px 10px;border-radius:8px;border:1px solid #fff;background:#222;color:#fff}
+</style>
+</head>
+<body>
+<div id="ui">
+Round Tetris v4<br/>
+<button onclick="resetGame()">Reset</button>
+<button onclick="spawnDemo()">Demo Stein</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+
+function resize(){
+ canvas.width=innerWidth;
+ canvas.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
+
+const COLS=18,ROWS=12;
+const TAU=Math.PI*2;
+const SLOT=TAU/COLS;
+
+let board=[],piece=null;
+
+function newBoard(){
+ board=[];
+ for(let r=0;r<ROWS;r++){
+  let row=[];
+  for(let c=0;c<COLS;c++)row.push(0);
+  board.push(row);
+ }
+}
+
+function spawn(){
+ piece={x:Math.floor(COLS/2),y:0,color:"#7ad3ff"};
+}
+
+function spawnDemo(){
+ piece={x:0,y:0,color:"#ffdf8a"};
+}
+
+function resetGame(){
+ newBoard();
+ spawn();
+}
+
+function drawCell(r,c,color){
+ const cx=innerWidth/2;
+ const cy=innerHeight/2;
+ const base=Math.min(innerWidth,innerHeight)*0.4;
+ const ringW=base/ROWS;
+ const inner=base-r*ringW-ringW;
+ const outer=inner+ringW;
+ const a0=c*SLOT;
+ const a1=(c+1)*SLOT;
+ ctx.beginPath();
+ ctx.arc(cx,cy,outer,a0,a1);
+ ctx.arc(cx,cy,inner,a1,a0,true);
+ ctx.closePath();
+ ctx.fillStyle=color;
+ ctx.fill();
+ ctx.strokeStyle="#000";
+ ctx.stroke();
+}
+
+function render(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ for(let r=0;r<ROWS;r++){
+  for(let c=0;c<COLS;c++){
+   drawCell(r,c,"rgba(255,255,255,0.05)");
+  }
+ }
+ if(piece){
+  drawCell(piece.y,piece.x,piece.color);
+ }
+ requestAnimationFrame(render);
+}
+
+function move(dx){
+ if(!piece)return;
+ piece.x=(piece.x+dx+COLS)%COLS;
+}
+
+function drop(){
+ if(!piece)return;
+ if(piece.y<ROWS-1)piece.y++;
+}
+
+canvas.addEventListener("touchstart",function(e){e.preventDefault();move(-1)},{passive:false});
+canvas.addEventListener("touchend",function(e){e.preventDefault();drop()},{passive:false});
+canvas.addEventListener("click",function(){move(1)});
+
+addEventListener("keydown",function(e){
+ if(e.key==="ArrowLeft")move(-1);
+ if(e.key==="ArrowRight")move(1);
+ if(e.key==="ArrowDown")drop();
+});
+
+resetGame();
+render();
+</script>
+</body>
+</html>
