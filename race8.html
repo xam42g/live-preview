@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Race 6 – Clean Farm (No Images)</title>
+<style>
+  :root{
+    --bg:#0b0f12;
+    --panel: rgba(10,12,16,.78);
+    --panel2: rgba(10,12,16,.88);
+    --stroke: rgba(255,255,255,.10);
+    --text: #e9eef6;
+    --muted: rgba(233,238,246,.72);
+    --gold: #f7c84d;
+    --gold2:#f0b42a;
+  }
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+  .wrap{height:100%; display:grid; place-items:center; padding:14px; box-sizing:border-box;}
+  .stage{
+    width:min(1100px, 100%);
+    aspect-ratio: 16/9;
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.10);
+    box-shadow: 0 22px 70px rgba(0,0,0,.55);
+    position:relative;
+    overflow:hidden;
+  }
+  canvas{width:100%; height:100%; display:block; image-rendering: pixelated;}
+
+  .hud{position:absolute; left:14px; top:14px; display:flex; gap:10px; align-items:flex-start; pointer-events:none;}
+  .chip{pointer-events:none; min-width:230px; padding:10px 12px; border-radius:14px; background:var(--panel); border:1px solid var(--stroke); backdrop-filter: blur(10px);}
+  .row{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+  .title{font-weight:800; letter-spacing:.2px}
+  .small{font-size:12px; color:var(--muted)}
+  .bar{height:10px; background: rgba(255,255,255,.08); border-radius:999px; overflow:hidden; border:1px solid rgba(255,255,255,.10)}
+  .bar > i{display:block; height:100%; width:0%; background: linear-gradient(90deg, #5de089, #3bb7ff);}
+
+  .topBtns{position:absolute; right:14px; top:14px; display:flex; gap:10px;}
+  .btn{cursor:pointer; border:none; color:var(--text); background:var(--panel); border:1px solid var(--stroke); border-radius:14px; padding:10px 12px; font-weight:700; backdrop-filter: blur(10px);}
+  .btn:active{transform: translateY(1px)}
+
+  .seedbar{position:absolute; left:50%; transform:translateX(-50%); bottom:14px; background:var(--panel); border:1px solid var(--stroke); border-radius:16px; padding:10px 12px; display:flex; gap:10px; align-items:center; backdrop-filter: blur(10px);}
+  .seed{cursor:pointer; user-select:none; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04); display:flex; gap:10px; align-items:center; min-width:180px; justify-content:space-between;}
+  .seed.sel{outline:2px solid rgba(247,200,77,.75); background: rgba(247,200,77,.10)}
+  .pill{font-size:12px; color:var(--muted)}
+
+  .modalBack{position:absolute; inset:0; display:none; place-items:center; background: rgba(0,0,0,.35);}
+  .modal{width:min(860px, calc(100% - 24px)); border-radius:18px; background:var(--panel2); border:1px solid var(--stroke); box-shadow:0 18px 60px rgba(0,0,0,.55); overflow:hidden;}
+  .modalHead{display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid rgba(255,255,255,.10)}
+  .x{cursor:pointer; width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12)}
+  .grid{display:grid; grid-template-columns: 1fr 1fr; gap:12px; padding:14px 16px 16px;}
+  .card{border:1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04); border-radius:14px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:12px;}
+  .card b{font-size:15px}
+  .card .sub{font-size:12px; color:var(--muted); margin-top:3px}
+  .act{cursor:pointer; border:none; border-radius:12px; padding:10px 12px; font-weight:900; color:#1a1302;
+       background: linear-gradient(180deg, var(--gold), var(--gold2));
+       box-shadow: inset 0 0 0 1px rgba(0,0,0,.20);
+  }
+  .act[disabled]{opacity:.35; cursor:not-allowed; filter: grayscale(1)}
+
+  .toast{position:absolute; left:50%; transform:translateX(-50%); bottom:86px; padding:10px 12px; border-radius:999px; background:rgba(10,12,16,.82); border:1px solid rgba(255,255,255,.12); color:var(--text); display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage">
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+      <div class="chip">
+        <div class="row"><div class="title" id="lvl">Level 1</div><div class="small" id="xpTxt">0/10 XP</div></div>
+        <div style="height:8px"></div>
+        <div class="bar"><i id="xpBar"></i></div>
+        <div style="height:10px"></div>
+        <div class="row"><div class="title">Coins</div><div class="title"><span id="coins">0</span> <span style="color:var(--gold)">●</span></div></div>
+      </div>
+    </div>
+
+    <div class="topBtns">
+      <button class="btn" id="invBtn">Inventar</button>
+      <button class="btn" id="shopBtn">Shop</button>
+    </div>
+
+    <div class="seedbar" id="seedbar">
+      <div class="seed" data-seed="wheat"><div><b>Weizen</b><div class="pill" id="wSeed">Saat: 0</div></div><div class="pill">Klick → säen</div></div>
+      <div class="seed" data-seed="carrot"><div><b>Karotte</b><div class="pill" id="cSeed">Saat: 0</div></div><div class="pill">Klick → säen</div></div>
+      <div class="seed" data-seed="beet"><div><b>Rote Beete</b><div class="pill" id="bSeed">Saat: 0</div></div><div class="pill">Klick → säen</div></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="modalBack" id="invBack">
+      <div class="modal">
+        <div class="modalHead">
+          <div class="title">Inventar (Scheune)</div>
+          <div class="x" data-close="inv">✕</div>
+        </div>
+        <div class="grid" id="invGrid"></div>
+      </div>
+    </div>
+
+    <div class="modalBack" id="shopBack">
+      <div class="modal">
+        <div class="modalHead">
+          <div class="title">Shop</div>
+          <div class="x" data-close="shop">✕</div>
+        </div>
+        <div class="grid" id="shopGrid"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(()=>{
+  // ---------- helpers ----------
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const el=(id)=>document.getElementById(id);
+  const toastEl=el('toast');
+  let toastT=0;
+  function showToast(msg){
+    toastEl.textContent=msg;
+    toastEl.style.display='block';
+    clearTimeout(toastT);
+    toastT=setTimeout(()=>toastEl.style.display='none', 1400);
+  }
+
+  // ---------- state ----------
+  const state={
+    level:1,
+    xp:0,
+    coins:0,
+    inv:{
+      wheat:0, carrot:0, beet:0,
+      wheatSeed:3, carrotSeed:1, beetSeed:1,
+      redFish:0, blueFish:0
+    },
+    selectedSeed:'wheat',
+    fields:[],
+    fieldUnlocked:2,
+    fishing:false,
+    fishCastT:0,
+    lastTs:performance.now()
+  };
+
+  function xpNeedForLevel(lv){
+    // simple curve: 10, 14, 18, ...
+    return 10 + (lv-1)*4;
+  }
+  function giveXP(n){
+    state.xp += n;
+    while(state.xp >= xpNeedForLevel(state.level)){
+      state.xp -= xpNeedForLevel(state.level);
+      state.level++;
+      showToast('Level Up! → '+state.level);
+    }
+    uiSync();
+  }
+
+  // ---------- layout / canvas scaling (crisp) ----------
+  const canvas=el('c');
+  const stage=el('stage');
+  const ctx=canvas.getContext('2d');
+
+  // Logical resolution (keeps everything crisp, no blur)
+  const W=960, H=540;
+  function resize(){
+    const dpr=Math.max(1, Math.floor(window.devicePixelRatio||1));
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function getPointerPos(ev){
+    const r=canvas.getBoundingClientRect();
+    const x=(ev.clientX - r.left) * (W / r.width);
+    const y=(ev.clientY - r.top) * (H / r.height);
+    return {x,y};
+  }
+
+  // ---------- world geometry ----------
+  const world={
+    barn:{x:70,y:80,w:170,h:120},
+    pond:{x:640,y:70,w:250,h:145},
+    shop:{x:690,y:235,w:220,h:150},
+    path:{y:190,h:80},
+    rail:{y:485,h:28},
+    fieldArea:{x:230,y:235, cols:3, rows:2, gap:18, size:92}
+  };
+
+  function buildFields(){
+    const {x,y,cols,rows,gap,size}=world.fieldArea;
+    const arr=[];
+    let id=0;
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const fx = x + c*(size+gap);
+        const fy = y + r*(size+gap);
+        arr.push({id:id++, x:fx, y:fy, w:size, h:size, unlocked: id<=state.fieldUnlocked, crop:null, grow:0, growMax:0});
+      }
+    }
+    state.fields = arr;
+  }
+  buildFields();
+
+  // ---------- crop config ----------
+  const CROPS={
+    wheat:{seedKey:'wheatSeed', itemKey:'wheat', grow:5, yield: 3, color:'#e6c45a'},
+    carrot:{seedKey:'carrotSeed', itemKey:'carrot', grow:7, yield: 3, color:'#ff8b3d'},
+    beet:{seedKey:'beetSeed', itemKey:'beet', grow:9, yield: 3, color:'#c94cff'}
+  };
+
+  // ---------- UI Sync ----------
+  const lvlEl=el('lvl'), xpTxt=el('xpTxt'), xpBar=el('xpBar'), coinsEl=el('coins');
+  const wSeedEl=el('wSeed'), cSeedEl=el('cSeed'), bSeedEl=el('bSeed');
+
+  function uiSync(){
+    const need=xpNeedForLevel(state.level);
+    lvlEl.textContent='Level '+state.level;
+    xpTxt.textContent=`${state.xp}/${need} XP`;
+    xpBar.style.width = `${Math.floor((state.xp/need)*100)}%`;
+    coinsEl.textContent=state.coins;
+
+    wSeedEl.textContent='Saat: '+state.inv.wheatSeed;
+    cSeedEl.textContent='Saat: '+state.inv.carrotSeed;
+    bSeedEl.textContent='Saat: '+state.inv.beetSeed;
+
+    // seed selection highlight
+    document.querySelectorAll('.seed').forEach(s=>{
+      s.classList.toggle('sel', s.dataset.seed===state.selectedSeed);
+    });
+
+    renderInv();
+    renderShop();
+  }
+
+  function invCard(name, value){
+    const div=document.createElement('div');
+    div.className='card';
+    div.innerHTML=`<div><b>${name}</b><div class="sub">Anzahl</div></div><div class="title">${value}</div>`;
+    return div;
+  }
+  function renderInv(){
+    const g=el('invGrid');
+    if(!g) return;
+    g.innerHTML='';
+    g.append(invCard('Coins', state.coins));
+    g.append(invCard('Weizen', state.inv.wheat));
+    g.append(invCard('Weizen-Saat', state.inv.wheatSeed));
+    g.append(invCard('Karotten', state.inv.carrot));
+    g.append(invCard('Karotten-Saat', state.inv.carrotSeed));
+    g.append(invCard('Rote Beete', state.inv.beet));
+    g.append(invCard('Rote-Beete-Saat', state.inv.beetSeed));
+    g.append(invCard('Roter Fisch', state.inv.redFish));
+    g.append(invCard('Blauer Fisch', state.inv.blueFish));
+  }
+
+  const shopItems=[
+    {
+      title:'2 Weizen → +1 Coin',
+      sub:'Verkaufen (+1 XP)',
+      can:()=>state.inv.wheat>=2,
+      act:()=>{ state.inv.wheat-=2; state.coins+=1; giveXP(1); showToast('+1 Coin'); }
+    },
+    {
+      title:'2 Karotten → +1 Coin',
+      sub:'Verkaufen (+1 XP)',
+      can:()=>state.inv.carrot>=2,
+      act:()=>{ state.inv.carrot-=2; state.coins+=1; giveXP(1); showToast('+1 Coin'); }
+    },
+    {
+      title:'1 Rote Beete → +3 Coins',
+      sub:'Verkaufen (+1 XP)',
+      can:()=>state.inv.beet>=1,
+      act:()=>{ state.inv.beet-=1; state.coins+=3; giveXP(1); showToast('+3 Coins'); }
+    },
+    {
+      title:'1 Roter Fisch → +3 Coins',
+      sub:'Verkaufen (+1 XP) · Angeln ab Level 2',
+      can:()=>state.level>=2 && state.inv.redFish>=1,
+      act:()=>{ state.inv.redFish-=1; state.coins+=3; giveXP(1); showToast('+3 Coins'); }
+    },
+    {
+      title:'1 Blauer Fisch → +4 Coins',
+      sub:'Verkaufen (+1 XP) · Angeln ab Level 2',
+      can:()=>state.level>=2 && state.inv.blueFish>=1,
+      act:()=>{ state.inv.blueFish-=1; state.coins+=4; giveXP(1); showToast('+4 Coins'); }
+    },
+    {
+      title:'Weizen-Saat kaufen (+1)',
+      sub:'Kosten: 1 Coin',
+      can:()=>state.coins>=1,
+      act:()=>{ state.coins-=1; state.inv.wheatSeed+=1; showToast('Weizen-Saat +1'); }
+    },
+    {
+      title:'Karotten-Saat kaufen (+1)',
+      sub:'Kosten: 5 Coins',
+      can:()=>state.coins>=5,
+      act:()=>{ state.coins-=5; state.inv.carrotSeed+=1; showToast('Karotten-Saat +1'); }
+    },
+    {
+      title:'Rote-Beete-Saat kaufen (+1)',
+      sub:'Kosten: 5 Coins',
+      can:()=>state.coins>=5,
+      act:()=>{ state.coins-=5; state.inv.beetSeed+=1; showToast('Rote-Beete-Saat +1'); }
+    },
+    {
+      title:'Feld freischalten (+1)',
+      sub:'Kosten: 10 Coins',
+      can:()=>state.coins>=10 && state.fieldUnlocked<state.fields.length,
+      act:()=>{
+        state.coins-=10;
+        state.fieldUnlocked++;
+        state.fields.forEach((f,i)=>f.unlocked = (i < state.fieldUnlocked));
+        showToast('Neues Feld!');
+      }
+    },
+  ];
+
+  function renderShop(){
+    const g=el('shopGrid');
+    if(!g) return;
+    g.innerHTML='';
+    for(const it of shopItems){
+      const div=document.createElement('div');
+      div.className='card';
+      const btn=document.createElement('button');
+      btn.className='act';
+      btn.textContent = it.title.includes('kaufen') || it.title.includes('freischalten') ? 'Kaufen' : 'Verkaufen';
+      btn.disabled = !it.can();
+      btn.addEventListener('click', ()=>{ if(!it.can()) return; it.act(); uiSync(); });
+      div.innerHTML = `<div><b>${it.title}</b><div class="sub">${it.sub}</div></div>`;
+      div.appendChild(btn);
+      g.appendChild(div);
+    }
+  }
+
+  uiSync();
+
+  // ---------- interactions ----------
+  // seed buttons
+  document.querySelectorAll('.seed').forEach(s=>{
+    s.addEventListener('click', ()=>{ state.selectedSeed=s.dataset.seed; uiSync(); });
+  });
+
+  // modals
+  const invBack=el('invBack'), shopBack=el('shopBack');
+  el('invBtn').addEventListener('click', ()=>{ invBack.style.display='grid'; });
+  el('shopBtn').addEventListener('click', ()=>{ shopBack.style.display='grid'; });
+  document.querySelectorAll('[data-close]').forEach(x=>{
+    x.addEventListener('click', ()=>{
+      if(x.dataset.close==='inv') invBack.style.display='none';
+      if(x.dataset.close==='shop') shopBack.style.display='none';
+    });
+  });
+  // click outside modal
+  invBack.addEventListener('click', (e)=>{ if(e.target===invBack) invBack.style.display='none'; });
+  shopBack.addEventListener('click', (e)=>{ if(e.target===shopBack) shopBack.style.display='none'; });
+
+  // main canvas click hotspots
+  canvas.addEventListener('pointerdown', (ev)=>{
+    const p=getPointerPos(ev);
+    // fields
+    for(const f of state.fields){
+      if(p.x>=f.x && p.x<=f.x+f.w && p.y>=f.y && p.y<=f.y+f.h){
+        if(!f.unlocked){
+          showToast('Gesperrt – im Shop freischalten');
+          return;
+        }
+        if(!f.crop){
+          plant(f);
+          return;
+        }
+        if(f.crop && f.grow<=0){
+          harvest(f);
+          return;
+        }
+        showToast('Wächst…');
+        return;
+      }
+    }
+    // barn
+    if(inRect(p, world.barn)) { invBack.style.display='grid'; return; }
+    // shop
+    if(inRect(p, world.shop)) { shopBack.style.display='grid'; return; }
+    // pond: fishing
+    if(inRect(p, world.pond)) { tryFish(); return; }
+  }, {passive:true});
+
+  function inRect(p, r){ return p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h; }
+
+  function plant(f){
+    const seed=state.selectedSeed;
+    const cfg=CROPS[seed];
+    if(!cfg) return;
+    const key=cfg.seedKey;
+    if(state.inv[key] <= 0){ showToast('Keine Saat'); return; }
+    state.inv[key] -= 1;
+    f.crop = seed;
+    f.growMax = cfg.grow;
+    f.grow = cfg.grow;
+    showToast('Gepflanzt');
+    uiSync();
+  }
+
+  function harvest(f){
+    const seed=f.crop;
+    const cfg=CROPS[seed];
+    // yield crops
+    state.inv[cfg.itemKey] += cfg.yield;
+    // give back 1 seed so you can replant without visiting the shop every time
+    state.inv[cfg.seedKey] += 1;
+    // reset field
+    f.crop=null;
+    f.grow=0;
+    f.growMax=0;
+    showToast(`Ernte +${cfg.yield} (Saat +1)`);
+    uiSync();
+  }
+
+  function tryFish(){
+    if(state.level < 2){ showToast('Angeln ab Level 2'); return; }
+    if(state.fishing){ showToast('Warte…'); return; }
+    state.fishing=true;
+    state.fishCastT=1.05; // seconds
+    showToast('Angel ausgeworfen…');
+  }
+
+  // ---------- drawing (clean, detailed, no external images) ----------
+  // Pixel-ish primitives
+  const PAL={
+    grass1:'#2e7d4a', grass2:'#2a7243', grass3:'#3d8a58',
+    dirt1:'#c5a36d', dirt2:'#b7935f',
+    wood1:'#a7743a', wood2:'#8f612f',
+    roof:'#c94a3b', roof2:'#b23b2f',
+    wall:'#d9d7d4', wall2:'#c8c5c1',
+    water:'#2a9bdc', water2:'#1b77b0', water3:'#55c7ff',
+    field:'#4a321f', field2:'#3b281a', field3:'#5a3a23',
+    stone:'#7e8794',
+  };
+
+  // deterministic grass dots
+  const grassDots=[];
+  (function genDots(){
+    let seed=1337;
+    const rnd=()=>{ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; };
+    for(let i=0;i<900;i++) grassDots.push({x:Math.floor(rnd()*W), y:Math.floor(rnd()*H), t:rnd()});
+  })();
+
+  function rr(x,y,w,h,r,fill,stroke){
+    ctx.beginPath();
+    const r2=Math.min(r, w/2, h/2);
+    ctx.moveTo(x+r2,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r2);
+    ctx.arcTo(x+w,y+h,x,y+h,r2);
+    ctx.arcTo(x,y+h,x,y,r2);
+    ctx.arcTo(x,y,x+w,y,r2);
+    if(fill){ ctx.fillStyle=fill; ctx.fill(); }
+    if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.stroke(); }
+  }
+
+  function shadowed(x,y,w,h,r,fill){
+    // subtle shadow
+    rr(x+3,y+4,w,h,r,'rgba(0,0,0,.25)',null);
+    rr(x,y,w,h,r,fill,'rgba(0,0,0,.35)');
+  }
+
+  function draw(){
+    // base grass
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle=PAL.grass1; ctx.fillRect(0,0,W,H);
+
+    // soft vignette
+    const g=ctx.createRadialGradient(W/2,H/2,120,W/2,H/2,520);
+    g.addColorStop(0,'rgba(0,0,0,0)');
+    g.addColorStop(1,'rgba(0,0,0,.22)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+    // dirt path
+    ctx.fillStyle=PAL.dirt1;
+    rr(0, world.path.y, W, world.path.h, 0, PAL.dirt1, null);
+    // path speckles
+    ctx.fillStyle='rgba(0,0,0,.07)';
+    for(let i=0;i<260;i++){
+      const x=(i*37)%W;
+      const y=world.path.y + ((i*53)%world.path.h);
+      ctx.fillRect(x, y, 2, 2);
+    }
+    // path edge
+    ctx.fillStyle='rgba(255,255,255,.06)';
+    ctx.fillRect(0, world.path.y, W, 2);
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    ctx.fillRect(0, world.path.y+world.path.h-2, W, 2);
+
+    // grass dots for detail
+    for(const d of grassDots){
+      const c = d.t < .33 ? PAL.grass2 : (d.t < .66 ? PAL.grass3 : 'rgba(255,255,255,.06)');
+      ctx.fillStyle=c;
+      ctx.fillRect(d.x, d.y, 2, 2);
+    }
+
+    // rail bottom
+    drawRail();
+
+    // pond + dock
+    drawPond();
+
+    // buildings
+    drawBarn();
+    drawShop();
+
+    // fields
+    drawFields();
+
+    // labels subtle
+    drawLabel(world.barn.x+12, world.barn.y+12, 'SCHEUNE');
+    drawLabel(world.shop.x+18, world.shop.y+16, 'SHOP');
+
+    // fishing animation overlay
+    if(state.fishing) drawFishing();
+
+    requestAnimationFrame(draw);
+  }
+
+  function drawLabel(x,y,text){
+    ctx.font='700 14px ui-sans-serif';
+    ctx.fillStyle='rgba(0,0,0,.35)';
+    ctx.fillText(text, x+1, y+1);
+    ctx.fillStyle='rgba(255,255,255,.85)';
+    ctx.fillText(text, x, y);
+  }
+
+  function drawBarn(){
+    const b=world.barn;
+    // base
+    shadowed(b.x,b.y,b.w,b.h,18,'#b53333');
+    // roof
+    rr(b.x+12,b.y-10,b.w-24,56,16, PAL.roof, 'rgba(0,0,0,.25)');
+    ctx.fillStyle=PAL.roof2;
+    for(let i=0;i<12;i++) ctx.fillRect(b.x+18+i*12, b.y-6, 6, 4);
+    // door
+    rr(b.x+b.w-62, b.y+b.h-54, 44, 42, 10, '#27303a','rgba(255,255,255,.10)');
+    // hay
+    rr(b.x+18, b.y+b.h-48, 60, 34, 10, '#d8b354','rgba(0,0,0,.20)');
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    for(let i=0;i<6;i++) ctx.fillRect(b.x+24+i*8, b.y+b.h-36, 5, 2);
+  }
+
+  function drawShop(){
+    const s=world.shop;
+    shadowed(s.x,s.y,s.w,s.h,18,'#1c222a');
+    // awning
+    rr(s.x+20, s.y+24, s.w-40, 34, 12, '#f5d772', 'rgba(0,0,0,.25)');
+    ctx.fillStyle='#f3f0ea';
+    for(let i=0;i<8;i++) ctx.fillRect(s.x+26+i*22, s.y+26, 12, 30);
+    // door
+    rr(s.x+28, s.y+s.h-58, 54, 44, 12, '#2a3240','rgba(255,255,255,.10)');
+    // window
+    rr(s.x+s.w-90, s.y+s.h-60, 64, 46, 12, '#3b93d7','rgba(255,255,255,.14)');
+    // sign
+    rr(s.x+78, s.y-16, 90, 34, 10, '#7a4d2a','rgba(0,0,0,.30)');
+    ctx.font='900 16px ui-sans-serif';
+    ctx.fillStyle='rgba(0,0,0,.35)';
+    ctx.fillText('SHOP', s.x+102, s.y+6);
+    ctx.fillStyle='#fff3d7';
+    ctx.fillText('SHOP', s.x+101, s.y+5);
+  }
+
+  function drawPond(){
+    const p=world.pond;
+    // rim + water
+    rr(p.x-6,p.y-6,p.w+12,p.h+12,26,'rgba(0,0,0,.25)',null);
+    rr(p.x,p.y,p.w,p.h,24, PAL.water, 'rgba(0,0,0,.25)');
+    // ripples
+    ctx.strokeStyle='rgba(255,255,255,.18)';
+    ctx.lineWidth=2;
+    for(let i=0;i<5;i++){
+      ctx.beginPath();
+      const cx=p.x+p.w*(0.28+i*0.14);
+      const cy=p.y+p.h*(0.46+Math.sin(i)*0.08);
+      ctx.ellipse(cx,cy, 22+i*6, 10+i*3, 0, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    // dock
+    rr(p.x+p.w-98, p.y+p.h-44, 86, 34, 10, '#c6a06a','rgba(0,0,0,.25)');
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    for(let i=0;i<6;i++) ctx.fillRect(p.x+p.w-92+i*14, p.y+p.h-38, 10, 3);
+    // bobber point
+    if(state.level>=2){
+      ctx.fillStyle='rgba(255,255,255,.65)';
+      ctx.fillRect(p.x+14, p.y+14, 3, 3);
+    }
+  }
+
+  function drawRail(){
+    const y=world.rail.y;
+    rr(0,y,W,world.rail.h,0,'#323840',null);
+    // sleepers
+    ctx.fillStyle='#695334';
+    for(let x=12;x<W;x+=30) ctx.fillRect(x, y+8, 18, 12);
+    // rails
+    ctx.fillStyle=PAL.stone;
+    ctx.fillRect(0, y+6, W, 3);
+    ctx.fillRect(0, y+world.rail.h-9, W, 3);
+    // subtle "train hint" wagons (static)
+    ctx.fillStyle='#c7473d';
+    rr(120, y-16, 90, 30, 8, '#c7473d', 'rgba(0,0,0,.25)');
+    rr(220, y-16, 120, 30, 8, '#2e86c9', 'rgba(0,0,0,.25)');
+    rr(350, y-16, 90, 30, 8, '#c7473d', 'rgba(0,0,0,.25)');
+  }
+
+  function drawFields(){
+    for(const f of state.fields){
+      // plot base
+      const base = f.unlocked ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.35)';
+      rr(f.x+4,f.y+6,f.w,f.h,16, base, null);
+      rr(f.x,f.y,f.w,f.h,16, f.unlocked ? PAL.field : '#141a21', 'rgba(255,255,255,.08)');
+
+      // soil lines
+      if(f.unlocked){
+        ctx.fillStyle='rgba(255,255,255,.06)';
+        for(let i=0;i<5;i++) ctx.fillRect(f.x+12, f.y+18+i*14, f.w-24, 2);
+      }
+
+      // crop
+      if(f.crop){
+        const ready = f.grow<=0;
+        const cfg=CROPS[f.crop];
+        if(ready) drawCropFull(f, cfg);
+        else drawCropGrowing(f, cfg);
+
+        // countdown badge
+        if(!ready){
+          rr(f.x+8, f.y+8, 44, 20, 10, 'rgba(0,0,0,.45)', 'rgba(255,255,255,.10)');
+          ctx.font='800 12px ui-sans-serif';
+          ctx.fillStyle='rgba(255,255,255,.90)';
+          ctx.fillText(Math.ceil(f.grow)+'s', f.x+18, f.y+22);
+        }else{
+          // ready tick
+          rr(f.x+8, f.y+8, 22, 22, 10, 'rgba(93,224,137,.18)', 'rgba(93,224,137,.55)');
+          ctx.fillStyle='rgba(93,224,137,.95)';
+          ctx.fillRect(f.x+16, f.y+14, 3, 10);
+          ctx.fillRect(f.x+12, f.y+18, 10, 3);
+        }
+      }
+
+      // locked tag
+      if(!f.unlocked){
+        ctx.font='800 12px ui-sans-serif';
+        ctx.fillStyle='rgba(255,255,255,.55)';
+        ctx.fillText('LOCK', f.x+f.w/2-16, f.y+f.h/2+4);
+      }
+    }
+  }
+
+  function drawCropGrowing(f,cfg){
+    // small sprouts (pixel-ish)
+    ctx.fillStyle=cfg.color;
+    for(let i=0;i<6;i++){
+      const x=f.x+18+(i%3)*22;
+      const y=f.y+44+Math.floor(i/3)*20;
+      ctx.fillRect(x, y, 3, 8);
+      ctx.fillRect(x-2, y+3, 7, 3);
+    }
+  }
+  function drawCropFull(f,cfg){
+    if(cfg===CROPS.wheat){
+      // wheat stalks
+      ctx.fillStyle='#e9d07a';
+      for(let i=0;i<8;i++){
+        const x=f.x+18+i*10;
+        const y=f.y+26+(i%2)*4;
+        ctx.fillRect(x, y, 3, 50);
+        ctx.fillRect(x-2, y+10, 7, 3);
+        ctx.fillRect(x-2, y+20, 7, 3);
+      }
+    }else if(cfg===CROPS.carrot){
+      // carrot tops + roots
+      for(let i=0;i<6;i++){
+        const x=f.x+22+(i%3)*22;
+        const y=f.y+28+Math.floor(i/3)*24;
+        ctx.fillStyle='#3bd66a';
+        ctx.fillRect(x, y, 3, 14);
+        ctx.fillRect(x-2, y+6, 7, 3);
+        ctx.fillStyle='#ff8b3d';
+        ctx.fillRect(x-1, y+12, 5, 10);
+        ctx.fillRect(x, y+20, 3, 6);
+      }
+    }else{
+      // beet leaves + bulbs
+      for(let i=0;i<6;i++){
+        const x=f.x+22+(i%3)*22;
+        const y=f.y+30+Math.floor(i/3)*24;
+        ctx.fillStyle='#3bd66a';
+        ctx.fillRect(x, y, 3, 14);
+        ctx.fillRect(x-2, y+6, 7, 3);
+        ctx.fillStyle='#c94cff';
+        rr(x-3, y+14, 10, 10, 5, '#c94cff', 'rgba(0,0,0,.20)');
+      }
+    }
+  }
+
+  function drawFishing(){
+    const p=world.pond;
+    // cast line from bottom center to pond center
+    const t=state.fishCastT;
+    const a=clamp(1 - (t/1.05), 0, 1);
+    const sx=W*0.5, sy=H-60;
+    const tx=p.x+p.w*0.42, ty=p.y+p.h*0.46;
+    const mx=sx + (tx-sx)*a;
+    const my=sy + (ty-sy)*a;
+
+    ctx.strokeStyle='rgba(255,255,255,.85)';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(sx,sy);
+    ctx.lineTo(mx,my);
+    ctx.stroke();
+
+    // bobber at end
+    ctx.fillStyle='#ff5a55';
+    rr(mx-4,my-4,8,8,4,'#ff5a55','rgba(0,0,0,.25)');
+  }
+
+  // ---------- simulation loop ----------
+  function tick(ts){
+    const dt=Math.min(0.05, (ts-state.lastTs)/1000);
+    state.lastTs=ts;
+
+    // crops timers
+    for(const f of state.fields){
+      if(f.crop && f.grow>0){
+        f.grow = Math.max(0, f.grow - dt);
+      }
+    }
+
+    // fishing cast
+    if(state.fishing){
+      state.fishCastT -= dt;
+      if(state.fishCastT<=0){
+        // catch result: red 60%, blue 40%
+        const r=Math.random();
+        if(r<0.60) state.inv.redFish += 1;
+        else state.inv.blueFish += 1;
+        state.fishing=false;
+        showToast('Fisch gefangen!');
+        uiSync();
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(draw);
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
