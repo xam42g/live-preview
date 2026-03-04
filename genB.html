@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Ball Block Idle</title>
+  <style>
+    :root{
+      --bg:#1b1f2a; --panel:#262c3a; --panel2:#1f2431; --txt:#e8ecff;
+      --muted:#aeb7d9; --good:#5dff9a; --bad:#ff6464; --gold:#ffd56a;
+      --btn:#30384a; --btn2:#3a4560;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 30% 20%, #2a3150 0%, var(--bg) 55%, #111521 100%);
+      color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .app{
+      width:min(1100px, 96vw);
+      height:min(720px, 92vh);
+      display:grid;
+      grid-template-columns: 1fr 300px;
+      gap:14px;
+    }
+    .game{
+      background:linear-gradient(180deg, #1c2233, #161b28);
+      border-radius:14px;
+      box-shadow:0 20px 70px rgba(0,0,0,.45);
+      position:relative;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.06);
+    }
+    canvas{display:block; width:100%; height:100%;}
+    .hud{
+      position:absolute; top:10px; left:10px; right:10px;
+      display:flex; align-items:center; justify-content:space-between;
+      pointer-events:none;
+      font-weight:600;
+      text-shadow:0 2px 10px rgba(0,0,0,.4);
+    }
+    .hud .left, .hud .right{display:flex; gap:10px; align-items:center}
+    .pill{
+      pointer-events:auto;
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(255,255,255,.08);
+      padding:8px 10px;
+      border-radius:999px;
+      display:flex; gap:8px; align-items:center;
+      backdrop-filter: blur(6px);
+    }
+    .pill small{color:var(--muted); font-weight:700}
+    .pill b{color:var(--gold)}
+    .pill button{
+      pointer-events:auto;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.1);
+      color:var(--txt);
+      padding:6px 10px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:700;
+    }
+    .pill button:hover{background:rgba(255,255,255,.12)}
+    .side{
+      background:linear-gradient(180deg, var(--panel), var(--panel2));
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.06);
+      box-shadow:0 18px 60px rgba(0,0,0,.35);
+      display:flex; flex-direction:column;
+      overflow:hidden;
+    }
+    .side header{
+      padding:12px 14px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid rgba(255,255,255,.07);
+    }
+    .side header h1{font-size:14px; margin:0; letter-spacing:.3px}
+    .side header .sub{color:var(--muted); font-size:12px; font-weight:700}
+    .statbar{
+      padding:10px 14px;
+      display:grid; gap:8px;
+      border-bottom:1px solid rgba(255,255,255,.07);
+    }
+    .statrow{
+      display:flex; justify-content:space-between; gap:10px;
+      font-size:12px; color:var(--muted); font-weight:700;
+    }
+    .statrow span b{color:var(--txt)}
+    .grid{
+      padding:12px 14px 14px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      overflow:auto;
+    }
+    .card{
+      background:rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:12px;
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-height:92px;
+    }
+    .card .t{font-size:12px; font-weight:900; letter-spacing:.2px}
+    .card .d{font-size:12px; color:var(--muted); font-weight:700; line-height:1.25}
+    .card .buy{
+      margin-top:auto;
+      display:flex; align-items:center; justify-content:space-between; gap:8px;
+    }
+    .card button{
+      background:linear-gradient(180deg, var(--btn2), var(--btn));
+      border:1px solid rgba(255,255,255,.10);
+      color:var(--txt);
+      padding:8px 10px;
+      border-radius:10px;
+      cursor:pointer;
+      font-weight:900;
+      width:100%;
+    }
+    .card button:hover{filter:brightness(1.05)}
+    .card button:disabled{
+      opacity:.45; cursor:not-allowed; filter:none;
+    }
+    .price{font-size:12px; font-weight:900; color:var(--gold)}
+    .footer{
+      padding:10px 14px;
+      border-top:1px solid rgba(255,255,255,.07);
+      display:flex; gap:10px;
+    }
+    .footer button{
+      flex:1;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      color:var(--txt);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:900;
+    }
+    .footer button:hover{background:rgba(255,255,255,.12)}
+    .hint{
+      position:absolute;
+      left:12px; bottom:10px;
+      color:rgba(255,255,255,.62);
+      font-size:12px; font-weight:700;
+      text-shadow:0 2px 10px rgba(0,0,0,.5);
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="game">
+    <canvas id="c"></canvas>
+
+    <div class="hud">
+      <div class="left">
+        <div class="pill"><small>Coins</small><b id="coins">0</b></div>
+        <div class="pill"><small>Wave</small><span><b id="wave">1</b></span></div>
+        <div class="pill"><small>Bälle</small><span><b id="balls">1</b></span></div>
+      </div>
+      <div class="right">
+        <div class="pill">
+          <small>Tempo</small><span><b id="spd">1.00x</b></span>
+          <button id="toggle">⏸︎</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">Click ins Feld: Block platzieren • Space: Pause • N: Next Wave</div>
+  </div>
+
+  <div class="side">
+    <header>
+      <h1>Upgrades</h1>
+      <div class="sub">Idle Ball-Block</div>
+    </header>
+
+    <div class="statbar">
+      <div class="statrow"><span>DPS (≈)</span><span><b id="dps">0</b></span></div>
+      <div class="statrow"><span>Crit Chance</span><span><b id="crit">5%</b></span></div>
+      <div class="statrow"><span>Crit Multi</span><span><b id="critm">2.0x</b></span></div>
+      <div class="statrow"><span>Damage / Hit</span><span><b id="dmg">1</b></span></div>
+    </div>
+
+    <div class="grid" id="shop"></div>
+
+    <div class="footer">
+      <button id="nextWave">Next Wave</button>
+      <button id="reset">Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- helpers ----------
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => {
+    if (n >= 1e9) return (n/1e9).toFixed(2) + "B";
+    if (n >= 1e6) return (n/1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n/1e3).toFixed(2) + "K";
+    return Math.floor(n).toString();
+  };
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+  const rand = (a,b)=>a+Math.random()*(b-a);
+
+  // ---------- canvas setup ----------
+  const canvas = $("c");
+  const ctx = canvas.getContext("2d");
+  let W=0,H=0, DPR=1;
+  function resize(){
+    DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+    const rect = canvas.getBoundingClientRect();
+    W = Math.floor(rect.width * DPR);
+    H = Math.floor(rect.height * DPR);
+    canvas.width = W; canvas.height = H;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---------- grid/blocks ----------
+  const grid = {
+    cols: 10,
+    rows: 8,
+    pad: 28,
+    gap: 6,
+    get cellSize(){
+      const usableW = W - this.pad*2;
+      const usableH = H - this.pad*2;
+      const csW = (usableW - (this.cols-1)*this.gap)/this.cols;
+      const csH = (usableH - (this.rows-1)*this.gap)/this.rows;
+      return Math.floor(Math.min(csW, csH));
+    },
+    get origin(){
+      const cs = this.cellSize;
+      const w = cs*this.cols + this.gap*(this.cols-1);
+      const h = cs*this.rows + this.gap*(this.rows-1);
+      return {x: Math.floor((W-w)/2), y: Math.floor((H-h)/2)};
+    }
+  };
+
+  function cellRect(cx,cy){
+    const cs = grid.cellSize;
+    const o = grid.origin;
+    const x = o.x + cx*(cs+grid.gap);
+    const y = o.y + cy*(cs+grid.gap);
+    return {x,y,w:cs,h:cs};
+  }
+
+  // blocks in map: key "x,y" => block
+  let blocks = new Map();
+
+  function key(x,y){ return x + "," + y; }
+
+  function spawnWave(wave){
+    // fill top 2 rows with random blocks, scaled HP
+    const count = Math.min(grid.cols*2, 10 + wave*2);
+    for (let i=0;i<count;i++){
+      const x = Math.floor(Math.random()*grid.cols);
+      const y = Math.floor(Math.random()*2);
+      const k = key(x,y);
+      if (blocks.has(k)) continue;
+      const hp = Math.floor(6 + wave*2 + rand(0, wave*1.2));
+      const val = Math.floor(2 + wave*0.8);
+      blocks.set(k, {x,y,hp,max:hp,val, color: blockColor(hp)});
+    }
+  }
+
+  function blockColor(hp){
+    // gradient-ish by hp
+    if (hp >= 40) return "#ff4d6d";
+    if (hp >= 25) return "#ff8f4d";
+    if (hp >= 15) return "#ffd56a";
+    if (hp >= 8)  return "#76e4ff";
+    return "#7dff9b";
+  }
+
+  // ---------- balls ----------
+  let balls = [];
+  function addBall(){
+    const r = 7*DPR;
+    balls.push({
+      x: W/2 + rand(-30,30)*DPR,
+      y: H*0.65 + rand(-30,30)*DPR,
+      vx: rand(-1,1)*220*DPR,
+      vy: rand(-1,1)*220*DPR,
+      r,
+      cd: 0 // collision cooldown
+    });
+  }
+
+  // ---------- game state ----------
+  const state = {
+    coins: 0,
+    wave: 1,
+    paused: false,
+    timeScale: 1,
+    // stats
+    damage: 1,
+    speedMul: 1,
+    critChance: 0.05,
+    critMulti: 2.0,
+    multiHitChance: 0.00, // chance to apply extra hit on collision
+    incomeMul: 1.0,
+    // derived
+    hitsLastSec: 0,
+    dpsApprox: 0
+  };
+
+  // ---------- shop ----------
+  const shopItems = [
+    {
+      id:"ball",
+      title:"New Ball",
+      desc:() => `Mehr Bälle = mehr Treffer.`,
+      price: () => Math.floor(30 * Math.pow(1.55, balls.length-1)),
+      canBuy: () => true,
+      buy: () => addBall()
+    },
+    {
+      id:"dmg",
+      title:"Damage +1",
+      desc:() => `Schaden pro Hit erhöhen.`,
+      price: () => Math.floor(25 * Math.pow(1.40, state.damage-1)),
+      canBuy: () => true,
+      buy: () => state.damage += 1
+    },
+    {
+      id:"speed",
+      title:"Ball Speed +10%",
+      desc:() => `Bälle bewegen sich schneller.`,
+      price: () => Math.floor(35 * Math.pow(1.45, Math.round((state.speedMul-1)/0.1))),
+      canBuy: () => state.speedMul < 3.0,
+      buy: () => state.speedMul = +(state.speedMul + 0.1).toFixed(2)
+    },
+    {
+      id:"crit",
+      title:"Crit Chance +2%",
+      desc:() => `Chance auf Crit erhöhen.`,
+      price: () => Math.floor(50 * Math.pow(1.50, Math.round((state.critChance-0.05)/0.02))),
+      canBuy: () => state.critChance < 0.50,
+      buy: () => state.critChance = +(state.critChance + 0.02).toFixed(2)
+    },
+    {
+      id:"critm",
+      title:"Crit Multi +0.2x",
+      desc:() => `Crit macht mehr Schaden.`,
+      price: () => Math.floor(60 * Math.pow(1.55, Math.round((state.critMulti-2.0)/0.2))),
+      canBuy: () => state.critMulti < 6.0,
+      buy: () => state.critMulti = +(state.critMulti + 0.2).toFixed(1)
+    },
+    {
+      id:"multi",
+      title:"Multi-Hit +3%",
+      desc:() => `Chance auf Extra-Hit pro Treffer.`,
+      price: () => Math.floor(80 * Math.pow(1.60, Math.round(state.multiHitChance/0.03))),
+      canBuy: () => state.multiHitChance < 0.45,
+      buy: () => state.multiHitChance = +(state.multiHitChance + 0.03).toFixed(2)
+    },
+    {
+      id:"income",
+      title:"Coin Income +10%",
+      desc:() => `Mehr Coins pro zerstörtem Block.`,
+      price: () => Math.floor(70 * Math.pow(1.55, Math.round((state.incomeMul-1)/0.1))),
+      canBuy: () => state.incomeMul < 4.0,
+      buy: () => state.incomeMul = +(state.incomeMul + 0.1).toFixed(2)
+    }
+  ];
+
+  const shopEl = $("shop");
+  function renderShop(){
+    shopEl.innerHTML = "";
+    for (const it of shopItems){
+      const p = it.price();
+      const affordable = state.coins >= p && it.canBuy();
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="t">${it.title}</div>
+        <div class="d">${it.desc()}</div>
+        <div class="buy">
+          <div class="price">💰 ${fmt(p)}</div>
+        </div>
+      `;
+      const btn = document.createElement("button");
+      btn.textContent = affordable ? "BUY" : (it.canBuy() ? "BUY" : "MAX");
+      btn.disabled = !affordable;
+      btn.onclick = () => {
+        const price = it.price();
+        if (state.coins < price) return;
+        if (!it.canBuy()) return;
+        state.coins -= price;
+        it.buy();
+        renderShop();
+        syncUI();
+      };
+      card.querySelector(".buy").appendChild(btn);
+      shopEl.appendChild(card);
+    }
+  }
+
+  // ---------- UI ----------
+  function syncUI(){
+    $("coins").textContent = fmt(state.coins);
+    $("wave").textContent = state.wave;
+    $("balls").textContent = balls.length;
+    $("spd").textContent = state.timeScale.toFixed(2) + "x";
+    $("crit").textContent = Math.round(state.critChance*100) + "%";
+    $("critm").textContent = state.critMulti.toFixed(1) + "x";
+    $("dmg").textContent = state.damage;
+    $("dps").textContent = fmt(state.dpsApprox);
+  }
+
+  $("toggle").onclick = () => { state.paused = !state.paused; $("toggle").textContent = state.paused ? "▶" : "⏸︎"; };
+  $("nextWave").onclick = () => nextWave();
+  $("reset").onclick = () => resetGame();
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space"){ e.preventDefault(); $("toggle").click(); }
+    if (e.key.toLowerCase() === "n"){ nextWave(); }
+    if (e.key === "+" || e.key === "="){ state.timeScale = clamp(state.timeScale + 0.25, 0.5, 4); syncUI(); }
+    if (e.key === "-"){ state.timeScale = clamp(state.timeScale - 0.25, 0.5, 4); syncUI(); }
+  });
+
+  // Click to place a block (extra fun + strategy)
+  canvas.addEventListener("click", (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (ev.clientX - rect.left) * DPR;
+    const my = (ev.clientY - rect.top) * DPR;
+    // find cell
+    const cs = grid.cellSize;
+    const o = grid.origin;
+    for (let y=0;y<grid.rows;y++){
+      for (let x=0;x<grid.cols;x++){
+        const r = cellRect(x,y);
+        if (mx>=r.x && mx<=r.x+r.w && my>=r.y && my<=r.y+r.h){
+          const k = key(x,y);
+          if (blocks.has(k)) return;
+          // cost to place
+          const cost = Math.floor(12 + state.wave*2);
+          if (state.coins < cost) return;
+          state.coins -= cost;
+          const hp = Math.floor(10 + state.wave*2);
+          blocks.set(k, {x,y,hp,max:hp,val:Math.floor(2 + state.wave*0.7), color:blockColor(hp)});
+          renderShop(); syncUI();
+          return;
+        }
+      }
+    }
+  });
+
+  // ---------- gameplay ----------
+  function damageRoll(){
+    let dmg = state.damage;
+    const crit = Math.random() < state.critChance;
+    if (crit) dmg = Math.floor(dmg * state.critMulti);
+    return {dmg, crit};
+  }
+
+  function awardCoins(block){
+    const base = block.val;
+    const c = Math.floor(base * state.incomeMul);
+    state.coins += c;
+  }
+
+  function hitBlock(block, amount){
+    block.hp -= amount;
+    block.color = blockColor(block.hp);
+    if (block.hp <= 0){
+      awardCoins(block);
+      blocks.delete(key(block.x, block.y));
+    }
+  }
+
+  function nextWave(){
+    state.wave += 1;
+    // push all existing blocks one row down (like classic block shooters)
+    const moved = new Map();
+    for (const b of blocks.values()){
+      const ny = b.y + 1;
+      if (ny >= grid.rows){
+        // if blocks reach bottom: soft reset wave (keep upgrades)
+        // penalty: lose coins
+        state.coins = Math.floor(state.coins * 0.6);
+        blocks = new Map();
+        spawnWave(state.wave);
+        renderShop(); syncUI();
+        return;
+      }
+      b.y = ny;
+      moved.set(key(b.x, b.y), b);
+    }
+    blocks = moved;
+    spawnWave(state.wave);
+    renderShop(); syncUI();
+  }
+
+  function resetGame(){
+    blocks = new Map();
+    balls = [];
+    Object.assign(state, {
+      coins:0, wave:1, paused:false, timeScale:1,
+      damage:1, speedMul:1, critChance:0.05, critMulti:2.0, multiHitChance:0.0, incomeMul:1.0,
+      hitsLastSec:0, dpsApprox:0
+    });
+    addBall();
+    spawnWave(state.wave);
+    renderShop(); syncUI();
+    $("toggle").textContent = "⏸︎";
+  }
+
+  // Particles / floating texts
+  const floaters = [];
+  function addFloater(text, x,y, color){
+    floaters.push({text, x,y, vy:-40*DPR, t:0, life:0.8, color});
+  }
+
+  // ---------- loop ----------
+  let last = performance.now();
+  let secAcc = 0;
+  function step(now){
+    const dt0 = (now-last)/1000; last = now;
+    const dt = clamp(dt0, 0, 0.05) * state.timeScale;
+
+    if (!state.paused){
+      // update balls
+      for (const ball of balls){
+        const spd = state.speedMul;
+        ball.x += ball.vx * dt * spd;
+        ball.y += ball.vy * dt * spd;
+
+        // walls
+        if (ball.x - ball.r < 0){ ball.x = ball.r; ball.vx *= -1; }
+        if (ball.x + ball.r > W){ ball.x = W - ball.r; ball.vx *= -1; }
+        if (ball.y - ball.r < 0){ ball.y = ball.r; ball.vy *= -1; }
+        if (ball.y + ball.r > H){ ball.y = H - ball.r; ball.vy *= -1; }
+
+        ball.cd = Math.max(0, ball.cd - dt);
+
+        // collide blocks (simple: check nearby cells)
+        const cs = grid.cellSize;
+        const o = grid.origin;
+
+        // estimate cell position
+        const gx = Math.floor((ball.x - o.x) / (cs + grid.gap));
+        const gy = Math.floor((ball.y - o.y) / (cs + grid.gap));
+
+        for (let yy = gy-1; yy<=gy+1; yy++){
+          for (let xx = gx-1; xx<=gx+1; xx++){
+            if (xx<0||yy<0||xx>=grid.cols||yy>=grid.rows) continue;
+            const k = key(xx,yy);
+            const b = blocks.get(k);
+            if (!b) continue;
+            const r = cellRect(xx,yy);
+
+            // circle-rect collision
+            const cx = clamp(ball.x, r.x, r.x+r.w);
+            const cy = clamp(ball.y, r.y, r.y+r.h);
+            const dx = ball.x - cx, dy = ball.y - cy;
+            const dist2 = dx*dx + dy*dy;
+
+            if (dist2 <= ball.r*ball.r){
+              // reflect velocity depending on penetration direction
+              if (ball.cd <= 0){
+                const {dmg, crit} = damageRoll();
+                hitBlock(b, dmg);
+                state.hitsLastSec += dmg;
+                addFloater((crit ? "CRIT " : "") + dmg, ball.x, ball.y, crit ? "#ffef8a" : "#aee6ff");
+
+                if (Math.random() < state.multiHitChance){
+                  const {dmg:d2, crit:cr2} = damageRoll();
+                  hitBlock(b, d2);
+                  state.hitsLastSec += d2;
+                  addFloater((cr2 ? "CRIT " : "") + d2, ball.x, ball.y, cr2 ? "#ffef8a" : "#c6ffb2");
+                }
+
+                // bounce
+                const leftPen = Math.abs((ball.x + ball.r) - r.x);
+                const rightPen = Math.abs((r.x+r.w) - (ball.x - ball.r));
+                const topPen = Math.abs((ball.y + ball.r) - r.y);
+                const botPen = Math.abs((r.y+r.h) - (ball.y - ball.r));
+                const minPen = Math.min(leftPen,rightPen,topPen,botPen);
+                if (minPen === leftPen || minPen === rightPen) ball.vx *= -1;
+                else ball.vy *= -1;
+
+                ball.cd = 0.03; // small cooldown so it doesn't multi-hit instantly
+              }
+            }
+          }
+        }
+      }
+
+      // update floaters
+      for (let i=floaters.length-1;i>=0;i--){
+        const f = floaters[i];
+        f.t += dt;
+        f.y += f.vy * dt;
+        if (f.t > f.life) floaters.splice(i,1);
+      }
+
+      // DPS approx
+      secAcc += dt;
+      if (secAcc >= 1){
+        state.dpsApprox = Math.floor(state.hitsLastSec / secAcc);
+        state.hitsLastSec = 0;
+        secAcc = 0;
+        syncUI();
+        renderShop();
+      }
+    }
+
+    draw();
+    requestAnimationFrame(step);
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // background grid frame
+    const cs = grid.cellSize;
+    const o = grid.origin;
+    const totalW = cs*grid.cols + grid.gap*(grid.cols-1);
+    const totalH = cs*grid.rows + grid.gap*(grid.rows-1);
+
+    // outer border
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    roundRect(o.x-10*DPR, o.y-10*DPR, totalW+20*DPR, totalH+20*DPR, 18*DPR);
+    ctx.fillStyle = "rgba(0,0,0,0.20)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 2*DPR;
+    ctx.stroke();
+    ctx.restore();
+
+    // cells
+    ctx.save();
+    for (let y=0;y<grid.rows;y++){
+      for (let x=0;x<grid.cols;x++){
+        const r = cellRect(x,y);
+        ctx.fillStyle = "rgba(255,255,255,0.04)";
+        roundRect(r.x, r.y, r.w, r.h, 10*DPR);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+
+    // blocks
+    for (const b of blocks.values()){
+      const r = cellRect(b.x,b.y);
+      ctx.save();
+      // block fill
+      roundRect(r.x, r.y, r.w, r.h, 12*DPR);
+      ctx.fillStyle = hexToRgba(b.color, 0.92);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.lineWidth = 2*DPR;
+      ctx.stroke();
+
+      // hp text
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.font = `${Math.floor(16*DPR)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(b.hp, r.x+r.w/2 + 1*DPR, r.y+r.h/2 + 1*DPR);
+
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.fillText(b.hp, r.x+r.w/2, r.y+r.h/2);
+      ctx.restore();
+    }
+
+    // balls
+    for (const ball of balls){
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+      ctx.fillStyle = "rgba(255,255,255,0.90)";
+      ctx.shadowColor = "rgba(120,220,255,0.35)";
+      ctx.shadowBlur = 16*DPR;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // floaters
+    for (const f of floaters){
+      const a = 1 - (f.t / f.life);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = f.color;
+      ctx.font = `${Math.floor(14*DPR)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    }
+  }
+
+  function roundRect(x,y,w,h,r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr,y);
+    ctx.arcTo(x+w,y,x+w,y+h,rr);
+    ctx.arcTo(x+w,y+h,x,y+h,rr);
+    ctx.arcTo(x,y+h,x,y,rr);
+    ctx.arcTo(x,y,x+w,y,rr);
+    ctx.closePath();
+  }
+  function hexToRgba(hex,a){
+    const h = hex.replace("#","");
+    const r = parseInt(h.slice(0,2),16);
+    const g = parseInt(h.slice(2,4),16);
+    const b = parseInt(h.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  // init
+  addBall();
+  spawnWave(state.wave);
+  renderShop();
+  syncUI();
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
