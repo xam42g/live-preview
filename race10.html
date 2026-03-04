@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Race 10</title>
+  <style>
+    html,body{margin:0;height:100%;background:#0b0f12;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+    canvas{
+      display:block;
+      background:#0b0f12;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius:18px;
+      box-shadow: 0 20px 70px rgba(0,0,0,.60);
+      border:1px solid rgba(255,255,255,.08);
+    }
+  </style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" aria-label="Farm"></canvas></div>
+
+<script>
+(() => {
+  // ===== Pixel-perfect scaling (no blur) =====
+  const LW=480, LH=270;           // logical resolution (small, crisp)
+  const canvas=document.getElementById('game');
+  const ctx=canvas.getContext('2d', {alpha:false});
+  ctx.imageSmoothingEnabled=false;
+
+  function resize(){
+    const w=window.innerWidth, h=window.innerHeight;
+    const scale = Math.max(1, Math.floor(Math.min(w/LW, h/LH)));
+    canvas.width = LW*scale;
+    canvas.height= LH*scale;
+    canvas.style.width = (LW*scale)+"px";
+    canvas.style.height= (LH*scale)+"px";
+    ctx.setTransform(scale,0,0,scale,0,0);
+    ctx.imageSmoothingEnabled=false;
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ===== Game state (same logic as Race 9, just cleaner visuals) =====
+  let wheat=3;
+  let seeds=3; // wheat seeds
+  const fields=[];
+  for(let i=0;i<6;i++){
+    fields.push({
+      x:110+(i%3)*82,
+      y:135+Math.floor(i/3)*70,
+      w:62,h:48,
+      crop:null,
+      t0:0
+    });
+  }
+
+  const GROW_MS=5000; // ~5s
+
+  // ===== Drawing helpers =====
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const now=()=>performance.now();
+
+  function rr(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+  function fillRR(x,y,w,h,r,fill,stroke=null){
+    ctx.fillStyle=fill; rr(x,y,w,h,r); ctx.fill();
+    if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=1; rr(x+0.5,y+0.5,w-1,h-1,r); ctx.stroke(); }
+  }
+  function pxDot(x,y,c){ ctx.fillStyle=c; ctx.fillRect(x,y,1,1); }
+
+  // simple deterministic noise (so it looks “painted”, but stable)
+  let s=1337;
+  function rnd(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }
+
+  // HUD icons (pixel)
+  function drawCoinIcon(x,y){
+    fillRR(x,y,10,10,3,'#ffd65a','#8a6a16');
+    ctx.fillStyle='rgba(255,255,255,.35)';
+    fillRR(x+2,y+2,3,2,2,'rgba(255,255,255,.35)');
+  }
+  function drawWheatIcon(x,y){
+    // stalk
+    ctx.fillStyle='#3aa655'; ctx.fillRect(x+5,y+1,1,9);
+    // grains
+    ctx.fillStyle='#f1d67b';
+    ctx.fillRect(x+2,y+3,3,2);
+    ctx.fillRect(x+6,y+2,3,2);
+    ctx.fillRect(x+2,y+6,3,2);
+    ctx.fillRect(x+6,y+5,3,2);
+  }
+
+  function drawGround(){
+    // base grass
+    ctx.fillStyle='#5fb86b';
+    ctx.fillRect(0,0,LW,LH);
+    // subtle texture
+    for(let i=0;i<700;i++){
+      const x=(rnd()*LW)|0, y=(rnd()*LH)|0;
+      pxDot(x,y, rnd()<0.5 ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.05)');
+    }
+    // vignette border
+    ctx.fillStyle='rgba(0,0,0,.18)';
+    ctx.fillRect(0,0,LW,6); ctx.fillRect(0,LH-6,LW,6);
+    ctx.fillRect(0,0,6,LH); ctx.fillRect(LW-6,0,6,LH);
+  }
+
+  function drawPath(){
+    // main path strip
+    fillRR(10,78, LW-20, 34, 10, '#d1b57a', 'rgba(0,0,0,.18)');
+    // dotted stones
+    for(let i=0;i<180;i++){
+      const x=12+(rnd()*(LW-24))|0;
+      const y=80+(rnd()*30)|0;
+      pxDot(x,y, rnd()<0.5 ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.10)');
+    }
+    // connectors
+    fillRR(300,112, 22, 30, 8, '#d1b57a', 'rgba(0,0,0,.18)'); // down to fields
+    fillRR(380,96, 28, 48, 10, '#d1b57a', 'rgba(0,0,0,.18)'); // to shop
+  }
+
+  const barn={x:22,y:24,w:92,h:56};
+  const shop={x:368,y:132,w:92,h:64};
+  const lake={x:330,y:20,w:130,h:72};
+
+  function drawLake(){
+    // shore
+    fillRR(lake.x-2,lake.y-2,lake.w+4,lake.h+4,16,'rgba(0,0,0,.18)');
+    fillRR(lake.x,lake.y,lake.w,lake.h,16,'#2aa7d8','#0f4a68');
+    fillRR(lake.x+6,lake.y+6,lake.w-12,lake.h-12,14,'#1f86b8',null);
+    // sparkles
+    for(let i=0;i<80;i++){
+      const x=(lake.x+8+rnd()*(lake.w-16))|0;
+      const y=(lake.y+8+rnd()*(lake.h-16))|0;
+      pxDot(x,y, rnd()<0.5 ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.06)');
+    }
+    // dock
+    fillRR(lake.x+lake.w-38,lake.y+lake.h-26, 28, 12, 5, '#b78850', 'rgba(0,0,0,.18)');
+    // label
+    ctx.fillStyle='rgba(0,0,0,.45)';
+    fillRR(lake.x+10,lake.y+8, 74, 14, 6, 'rgba(0,0,0,.35)');
+    ctx.fillStyle='rgba(255,255,255,.90)';
+    ctx.font='700 9px system-ui';
+    ctx.textBaseline='middle';
+    ctx.fillText('TEICH', lake.x+20, lake.y+15);
+  }
+
+  function drawBarn(){
+    // shadow
+    fillRR(barn.x+3,barn.y+4,barn.w,barn.h,12,'rgba(0,0,0,.18)');
+    // body
+    fillRR(barn.x,barn.y,barn.w,barn.h,12,'#2a2e32','rgba(255,255,255,.12)');
+    // roof
+    fillRR(barn.x-3,barn.y-2,barn.w+6,18,10,'#ff4f8a','rgba(0,0,0,.18)');
+    // sign
+    ctx.fillStyle='#0b0f12';
+    ctx.font='900 10px system-ui';
+    ctx.textBaseline='middle';
+    ctx.textAlign='center';
+    ctx.fillText('SCHEUNE', barn.x+barn.w/2, barn.y+7);
+    ctx.textAlign='left';
+    // door
+    fillRR(barn.x+39,barn.y+22, 14, 26, 6, '#3b2c1c','rgba(255,255,255,.08)');
+    // crates
+    fillRR(barn.x+10,barn.y+28, 18, 14, 5, '#6b4b2b', 'rgba(0,0,0,.18)');
+    fillRR(barn.x+14,barn.y+32, 10, 2, 2, 'rgba(255,255,255,.12)');
+  }
+
+  function drawShop(){
+    fillRR(shop.x+3,shop.y+4,shop.w,shop.h,12,'rgba(0,0,0,.18)');
+    fillRR(shop.x,shop.y,shop.w,shop.h,12,'#2a2e32','rgba(255,255,255,.12)');
+    fillRR(shop.x-3,shop.y-2,shop.w+6,18,10,'#ffd65a','rgba(0,0,0,.18)');
+    ctx.fillStyle='#0b0f12';
+    ctx.font='900 10px system-ui';
+    ctx.textBaseline='middle';
+    ctx.textAlign='center';
+    ctx.fillText('SHOP', shop.x+shop.w/2, shop.y+7);
+    ctx.textAlign='left';
+    // awning stripes
+    for(let i=0;i<shop.w-16;i+=8){
+      ctx.fillStyle=(i/8)%2===0 ? '#ffffff' : '#ff9a3b';
+      ctx.fillRect(shop.x+8+i, shop.y+18, 4, 10);
+    }
+    // counter
+    fillRR(shop.x+12,shop.y+38,shop.w-24, 18, 6, '#9b6a3a', 'rgba(0,0,0,.18)');
+    // coin icon
+    drawCoinIcon(shop.x+14, shop.y+42);
+  }
+
+  function drawFields(){
+    // field area backdrop
+    fillRR(86,122, 266, 126, 16, 'rgba(0,0,0,.08)', 'rgba(255,255,255,.06)');
+
+    for(let i=0;i<fields.length;i++){
+      const f=fields[i];
+      // frame + soil
+      fillRR(f.x+2,f.y+3,f.w,f.h,12,'rgba(0,0,0,.18)');
+      fillRR(f.x,f.y,f.w,f.h,12,'#7a5b3a','rgba(255,255,255,.12)');
+      fillRR(f.x+7,f.y+7,f.w-14,f.h-14,10,'#3c2718','rgba(0,0,0,.22)');
+
+      // tilled rows
+      ctx.fillStyle='rgba(255,255,255,.06)';
+      for(let x=f.x+10; x<f.x+f.w-10; x+=8){
+        ctx.fillRect(x, f.y+9, 1, f.h-18);
+      }
+
+      // crop state
+      if(f.crop){
+        const t = clamp((now()-f.t0)/GROW_MS, 0, 1);
+        // stage: 0 sprout, 1 mid, 2 ripe
+        const stage = t<0.45?0:(t<0.90?1:2);
+        const baseX=f.x+12, baseY=f.y+12;
+
+        if(stage===0){
+          ctx.fillStyle='#3aa655';
+          for(let k=0;k<6;k++){
+            ctx.fillRect(baseX + (k%3)*16 + 6, baseY + (k//3)*16 + 20, 2, 6);
+          }
+        } else if(stage===1){
+          ctx.fillStyle='#3aa655';
+          for(let k=0;k<6;k++){
+            ctx.fillRect(baseX + (k%3)*16 + 6, baseY + (k//3)*16 + 14, 2, 12);
+          }
+          ctx.fillStyle='#f1d67b';
+          for(let k=0;k<6;k++){
+            ctx.fillRect(baseX + (k%3)*16 + 4, baseY + (k//3)*16 + 16, 6, 3);
+          }
+        } else {
+          // ripe wheat
+          ctx.fillStyle='#3aa655';
+          for(let k=0;k<6;k++){
+            ctx.fillRect(baseX + (k%3)*16 + 6, baseY + (k//3)*16 + 8, 2, 18);
+          }
+          ctx.fillStyle='#f1d67b';
+          for(let k=0;k<6;k++){
+            ctx.fillRect(baseX + (k%3)*16 + 3, baseY + (k//3)*16 + 10, 8, 4);
+            ctx.fillRect(baseX + (k%3)*16 + 3, baseY + (k//3)*16 + 15, 8, 4);
+          }
+          // ready badge
+          fillRR(f.x+8,f.y+8, 18, 12, 5, 'rgba(125,255,138,.22)', 'rgba(125,255,138,.35)');
+          ctx.fillStyle='#0b0f12';
+          ctx.font='900 10px system-ui';
+          ctx.textBaseline='middle';
+          ctx.fillText('✓', f.x+16, f.y+14);
+        }
+
+        // progress bar
+        fillRR(f.x+10, f.y+f.h-14, f.w-20, 6, 4, 'rgba(255,255,255,.10)');
+        fillRR(f.x+10, f.y+f.h-14, Math.max(1, Math.floor((f.w-20)*t)), 6, 4, t>=1?'rgba(125,255,138,.85)':'rgba(255,214,90,.85)');
+      }
+    }
+  }
+
+  function drawHUD(){
+    // top-left info chip
+    fillRR(10,10, 148, 22, 10, 'rgba(0,0,0,.45)', 'rgba(255,255,255,.10)');
+    drawCoinIcon(16,16);
+    ctx.fillStyle='rgba(255,255,255,.92)';
+    ctx.font='800 10px system-ui';
+    ctx.textBaseline='middle';
+    ctx.fillText(String(wheat), 30, 21);
+
+    drawWheatIcon(58,15);
+    ctx.fillText(String(seeds), 74, 21);
+
+    // small title
+    ctx.fillStyle='rgba(255,255,255,.70)';
+    ctx.font='700 10px system-ui';
+    ctx.fillText('Race 10', 110, 21);
+  }
+
+  function render(){
+    drawGround();
+    drawPath();
+    drawLake();
+    drawBarn();
+    drawShop();
+    drawFields();
+    drawHUD();
+    requestAnimationFrame(render);
+  }
+
+  // ===== Interaction (small step: only fields click like before) =====
+  // Fix: harvest always gives +3 wheat and +1 seed (net +2), then you can replant.
+  // Plant consumes 1 seed.
+  function toLocal(e){
+    const rect=canvas.getBoundingClientRect();
+    const x=(e.clientX-rect.left)/(rect.width/(LW))*1;
+    const y=(e.clientY-rect.top)/(rect.height/(LH))*1;
+    return {x:Math.floor(x), y:Math.floor(y)};
+  }
+
+  canvas.addEventListener('click', (e)=>{
+    const p=toLocal(e);
+    // fields
+    for(const f of fields){
+      if(p.x>=f.x && p.x<f.x+f.w && p.y>=f.y && p.y<f.y+f.h){
+        if(!f.crop){
+          if(seeds<=0) return;
+          seeds -= 1;
+          f.crop='wheat';
+          f.t0=now();
+        } else {
+          const t = (now()-f.t0);
+          if(t>=GROW_MS){
+            wheat += 3;      // harvest
+            seeds += 1;      // seed back (net +2)
+            f.crop=null;
+            f.t0=0;
+          }
+        }
+        return;
+      }
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
