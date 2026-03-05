@@ -3,450 +3,505 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>Stack Touch</title>
+  <title>Stack Smash – Touch</title>
   <style>
-    :root{ --bg1:#74c8ff; --bg2:#e9f7ff; --ui:#0b0f18; --panel:rgba(16,22,35,.55); --purple:#8f7bff; --purple2:#b7a6ff; --dark:#3b4152; --dark2:#565d73; --ball:#ff4fb8; --ball2:#ff7ad0; }
-    html,body{height:100%; margin:0; background:linear-gradient(180deg,var(--bg1),var(--bg2)); font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; overflow:hidden;}
-    canvas{display:block; width:100vw; height:100vh; touch-action:none;}
-    .hud{position:fixed; inset:0; pointer-events:none;}
-    .topbar{position:absolute; left:0; right:0; top:0; padding:10px 14px; display:flex; align-items:center; justify-content:center; gap:14px; color:white; font-weight:700; text-shadow:0 2px 10px rgba(0,0,0,.25);}
-    .level{font-size:18px; opacity:.95;}
-    .progress{width:min(320px,60vw); height:10px; border-radius:8px; background:rgba(0,0,0,.25); overflow:hidden;}
-    .progress > div{height:100%; width:0%; background:rgba(255,255,255,.85);}
-    .leftbar{position:absolute; left:14px; top:120px; width:22px; height:180px; border-radius:14px; background:rgba(0,0,0,.18); overflow:hidden;}
-    .leftbar > div{position:absolute; left:0; right:0; bottom:0; height:0%; background:rgba(255,170,60,.9);} 
-    .centerOverlay{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:18px 20px; border-radius:14px; background:var(--panel); color:white; text-align:center; min-width:min(320px,78vw); display:none;}
-    .centerOverlay h1{margin:0 0 6px 0; font-size:28px; letter-spacing:.5px;}
-    .centerOverlay .score{font-size:54px; font-weight:900; margin:8px 0 6px 0;}
-    .centerOverlay .best{opacity:.9; font-weight:700;}
-    .buttons{margin-top:14px; display:flex; gap:12px; justify-content:center; pointer-events:auto;}
-    button{border:0; border-radius:14px; padding:12px 14px; font-weight:800; font-size:16px; cursor:pointer; background:rgba(255,255,255,.9); color:#0b0f18; box-shadow:0 12px 30px rgba(0,0,0,.18);} 
-    button:active{transform:translateY(1px);} 
-    .hint{position:absolute; right:14px; top:74px; padding:10px 12px; border-radius:12px; background:rgba(0,0,0,.25); color:white; font-weight:700; display:flex; gap:10px; align-items:center;}
-    .hint .icon{width:34px; height:34px; border-radius:10px; background:rgba(255,255,255,.2); display:grid; place-items:center; font-size:18px;}
-    .hint small{display:block; opacity:.9; font-weight:600;}
-    .footer{position:absolute; left:0; right:0; bottom:12px; text-align:center; color:rgba(255,255,255,.75); font-weight:700; text-shadow:0 2px 10px rgba(0,0,0,.15);} 
-    .footer span{background:rgba(0,0,0,.18); padding:6px 10px; border-radius:999px;}
+    :root{
+      --bg1:#6fd3ff;
+      --bg2:#cfefff;
+      --dark:#2a2f3a;
+      --dark2:#1d222b;
+      --violet:#8b67ff;
+      --violet2:#6a49ff;
+      --ball:#ff4fb6;
+      --ui:#ffffffcc;
+    }
+    html,body{height:100%;margin:0;overflow:hidden;background:linear-gradient(180deg,var(--bg1),var(--bg2));font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+    canvas{display:block;touch-action:manipulation;}
+    .hud{
+      position:fixed; inset:12px 12px auto 12px;
+      display:flex; align-items:center; justify-content:space-between;
+      pointer-events:none;
+    }
+    .pill{
+      pointer-events:none;
+      background:rgba(255,255,255,.35);
+      border:1px solid rgba(255,255,255,.35);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius:14px;
+      padding:8px 12px;
+      color:#132033;
+      font-weight:700;
+      letter-spacing:.2px;
+      display:flex; gap:10px; align-items:baseline;
+    }
+    .pill small{font-weight:700;opacity:.75}
+    .centerOverlay{
+      position:fixed; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      pointer-events:none;
+    }
+    .card{
+      width:min(520px, calc(100% - 40px));
+      background:rgba(10,18,30,.45);
+      border:1px solid rgba(255,255,255,.15);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius:18px;
+      padding:18px;
+      color:white;
+      text-align:center;
+      transform: translateZ(0);
+    }
+    .card h1{margin:6px 0 2px;font-size:22px;}
+    .card p{margin:6px 0 14px;opacity:.9;line-height:1.35}
+    .btnRow{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;pointer-events:auto}
+    button{
+      border:0;
+      border-radius:14px;
+      padding:12px 16px;
+      font-weight:800;
+      cursor:pointer;
+      background:white;
+      color:#101827;
+      box-shadow:0 10px 24px rgba(0,0,0,.25);
+    }
+    button.secondary{background:rgba(255,255,255,.18); color:white; border:1px solid rgba(255,255,255,.22); box-shadow:none;}
+    .hint{font-size:13px; opacity:.85}
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
 
   <div class="hud">
-    <div class="topbar">
-      <div class="level" id="level">4–5</div>
-      <div class="progress"><div id="prog"></div></div>
-      <div class="level" id="remaining">30</div>
-    </div>
-    <div class="leftbar" aria-hidden="true"><div id="fv"></div></div>
+    <div class="pill"><small>Level</small> <span id="lvl">1</span></div>
+    <div class="pill"><small>Score</small> <span id="score">0</span></div>
+    <div class="pill"><small>Best</small> <span id="best">0</span></div>
+  </div>
 
-    <div class="hint" id="hint">
-      <div class="icon">↻</div>
-      <div>
-        Rotate<br><small>your screen</small>
+  <div class="centerOverlay" id="overlay" style="display:none;">
+    <div class="card">
+      <h1 id="ovTitle">Game Over</h1>
+      <p id="ovText">Tippe, wenn das lila Segment vorne ist. Triffst du grau/schwarz: Game Over.</p>
+      <div class="btnRow">
+        <button id="btnRetry">Nochmal</button>
+        <button class="secondary" id="btnNext" style="display:none;">Nächstes Level</button>
       </div>
+      <p class="hint" id="ovHint">Tipp: Kurze, schnelle Taps sind am sichersten.</p>
     </div>
-
-    <div class="centerOverlay" id="overlay">
-      <h1>GAME OVER</h1>
-      <div class="best" id="bestLine">👑 0</div>
-      <div class="score" id="scoreLine">0</div>
-      <div class="buttons">
-        <button id="restartBtn">⟲ Neu starten</button>
-        <button id="homeBtn">⌂ Start</button>
-      </div>
-    </div>
-
-    <div class="footer"><span>Tippe, um lila Platten zu zerstören. Triffst du grau: Game Over.</span></div>
   </div>
 
 <script>
 (() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
+  // -------- Helpers --------
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const TAU=Math.PI*2;
 
-  const ui = {
-    level: document.getElementById('level'),
-    remaining: document.getElementById('remaining'),
-    prog: document.getElementById('prog'),
-    fv: document.getElementById('fv'),
-    overlay: document.getElementById('overlay'),
-    bestLine: document.getElementById('bestLine'),
-    scoreLine: document.getElementById('scoreLine'),
-    restartBtn: document.getElementById('restartBtn'),
-    homeBtn: document.getElementById('homeBtn'),
-    hint: document.getElementById('hint'),
-  };
-
-  const DPR = () => Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  // -------- Canvas setup (pixel-perfect, fast) --------
+  const canvas=document.getElementById('c');
+  const ctx=canvas.getContext('2d', { alpha:false, desynchronized:true });
+  let W=0,H=0, DPR=1;
   function resize(){
-    const dpr = DPR();
-    canvas.width = Math.floor(innerWidth * dpr);
-    canvas.height = Math.floor(innerHeight * dpr);
-    canvas.style.width = innerWidth + 'px';
-    canvas.style.height = innerHeight + 'px';
-    ctx.setTransform(dpr,0,0,dpr,0,0);
+    DPR=Math.max(1, Math.min(2.25, window.devicePixelRatio||1));
+    W=window.innerWidth; H=window.innerHeight;
+    canvas.width=Math.floor(W*DPR);
+    canvas.height=Math.floor(H*DPR);
+    canvas.style.width=W+'px';
+    canvas.style.height=H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
   }
-  addEventListener('resize', resize);
+  window.addEventListener('resize', resize, {passive:true});
   resize();
 
-  const rand = (a,b)=>a+Math.random()*(b-a);
-  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  const easeOut = t => 1 - Math.pow(1-t,3);
+  // -------- UI --------
+  const elLvl=document.getElementById('lvl');
+  const elScore=document.getElementById('score');
+  const elBest=document.getElementById('best');
+  const overlay=document.getElementById('overlay');
+  const ovTitle=document.getElementById('ovTitle');
+  const ovText=document.getElementById('ovText');
+  const ovHint=document.getElementById('ovHint');
+  const btnRetry=document.getElementById('btnRetry');
+  const btnNext=document.getElementById('btnNext');
 
-  const state = {
-    running: true,
-    score: 0,
-    best: Number(localStorage.getItem('stack_touch_best')||0),
-    level: 4,
-    targetLevel: 5,
-    ringsTotal: 30,
-    ringsLeft: 30,
-    smash: 0, // energy bar
-    smashMax: 100,
-    time: 0,
+  const BEST_KEY='stack_smash_best_v1';
+  let best=Number(localStorage.getItem(BEST_KEY)||'0')||0;
+  elBest.textContent=best;
+
+  // -------- Game data (multiple levels) --------
+  // Each layer: ring with segments; one "safe" purple segment, others dark.
+  // Touch: if safe segment is at front angle -> break it and drop.
+  const LEVELS=[
+    { layers: 16, segsMin: 4, segsMax: 7, safeCount: 1, rotSpeed: 0.010, dropSpeed: 18 },
+    { layers: 20, segsMin: 5, segsMax: 8, safeCount: 1, rotSpeed: 0.013, dropSpeed: 20 },
+    { layers: 24, segsMin: 5, segsMax: 9, safeCount: 1, rotSpeed: 0.016, dropSpeed: 22 },
+    { layers: 28, segsMin: 6, segsMax: 10, safeCount: 1, rotSpeed: 0.019, dropSpeed: 24 },
+    { layers: 32, segsMin: 6, segsMax: 11, safeCount: 1, rotSpeed: 0.022, dropSpeed: 26 },
+  ];
+
+  // -------- World / visuals --------
+  const world={
+    levelIndex:0,
+    score:0,
+    state:'playing', // playing | dropping | gameover | win
+    t:0,
+    camY:0,
+    shake:0,
   };
 
-  // Tower model: stack of rings; each ring has type: 'purple' or 'dark' or 'gap'
-  const tower = {
-    x: 0,
-    y: 0,
-    radius: 84,
-    thickness: 18,
-    shaftRadius: 34,
-    rings: [],
-    ringY: [],
+  // stack geometry
+  const stack={
+    x:0, y:0,
+    rOuter:120,
+    rInner:56,
+    layerH:22,
+    layers:[],
+    rotation:0,
   };
 
-  const ball = {
-    x: 0,
-    y: 0,
-    r: 16,
-    vy: 0,
-    g: 2600,
-    bounce: 0.35,
-    dropSpeed: 520,
-    colorPulse: 0,
+  const ball={
+    x:0,
+    y:0,
+    r:16,
+    // front angle is 0 (pointing "down" screen). We'll test segments at that.
   };
 
-  const fx = [];
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function randi(a,b){ return Math.floor(rand(a,b+1)); }
 
-  function newTower(){
-    state.ringsTotal = 30;
-    state.ringsLeft = state.ringsTotal;
-    tower.rings.length = 0;
-    tower.ringY.length = 0;
-    const safeFirst = 2;
-    for(let i=0;i<state.ringsTotal;i++){
-      let t;
-      if(i < safeFirst) t = 'purple';
-      else {
-        // purple is more common
-        t = Math.random() < 0.72 ? 'purple' : 'dark';
+  function makeLevel(i){
+    const cfg=LEVELS[clamp(i,0,LEVELS.length-1)];
+    stack.layers.length=0;
+    stack.rotation=0;
+
+    for(let li=0; li<cfg.layers; li++){
+      const segCount=randi(cfg.segsMin, cfg.segsMax);
+      // Build segments around ring.
+      // Choose safe segments (purple) spaced out; remaining are dark.
+      const segs=[];
+      const gap=0.10; // small gap between segments (radians fraction)
+      const base=TAU/segCount;
+
+      // pick safe segment indices
+      const safeSet=new Set();
+      while(safeSet.size<cfg.safeCount){ safeSet.add(randi(0,segCount-1)); }
+
+      for(let si=0; si<segCount; si++){
+        const a0=si*base + base*gap*0.5;
+        const a1=(si+1)*base - base*gap*0.5;
+        segs.push({
+          a0,a1,
+          safe: safeSet.has(si),
+          broken:false,
+        });
       }
-      tower.rings.push({ type:t, broken:false });
-    }
-  }
-
-  function resetGame(){
-    state.running = true;
-    state.score = 0;
-    state.smash = 0;
-    state.level = 4;
-    state.targetLevel = 5;
-    ui.level.textContent = `${state.level}`;
-    ui.overlay.style.display = 'none';
-    ui.hint.style.display = 'flex';
-
-    newTower();
-    ball.vy = 0;
-    ball.y = 160;
-    ball.x = 0;
-  }
-
-  function goHome(){
-    // "Start" here just resets and hides overlay.
-    resetGame();
-  }
-
-  resetGame();
-
-  function layout(){
-    const w = innerWidth;
-    const h = innerHeight;
-    tower.x = w/2;
-    tower.y = h*0.62;
-
-    // recompute ring positions (top to bottom)
-    tower.ringY.length = state.ringsTotal;
-    const topY = tower.y - state.ringsTotal * tower.thickness;
-    for(let i=0;i<state.ringsTotal;i++){
-      tower.ringY[i] = topY + i*tower.thickness;
+      stack.layers.push({ segs, cleared:false });
     }
 
-    // keep ball above the top
-    ball.x = tower.x;
-    // ball.y is world y, keep it within view
-    ball.y = clamp(ball.y, 80, h-120);
+    // Layout
+    stack.x=W*0.5;
+    stack.y=H*0.58;
+
+    // adaptive sizes
+    const minDim=Math.min(W,H);
+    stack.rOuter=clamp(minDim*0.18, 90, 150);
+    stack.rInner=stack.rOuter*0.46;
+    stack.layerH=clamp(minDim*0.035, 18, 26);
+
+    ball.x=stack.x;
+    ball.y=stack.y - stack.layers.length*stack.layerH + 28;
+
+    world.camY=0;
+    world.shake=0;
+
+    elLvl.textContent=String(i+1);
   }
 
-  layout();
-  addEventListener('resize', layout);
-
-  function ringIndexUnderBall(){
-    // ball is around some y; find nearest ring y band
-    for(let i=0;i<state.ringsTotal;i++){
-      const y = tower.ringY[i];
-      if(ball.y + ball.r >= y && ball.y - ball.r <= y + tower.thickness){
-        return i;
-      }
+  function showOverlay(kind){
+    overlay.style.display='flex';
+    btnNext.style.display='none';
+    if(kind==='gameover'){
+      ovTitle.textContent='GAME OVER';
+      ovText.textContent='Du hast grau/schwarz erwischt. Tippe lila, dann fällt der Ball eine Etage.';
+      ovHint.textContent='Tipp: Warte auf lila vorne und tippe genau dann.';
+    } else if(kind==='win'){
+      ovTitle.textContent='LEVEL GESCHAFFT!';
+      ovText.textContent='Nice! Weiter zum nächsten Level?';
+      ovHint.textContent='Die nächsten Level rotieren schneller.';
+      btnNext.style.display='inline-block';
+    } else if(kind==='start'){
+      ovTitle.textContent='STACK SMASH';
+      ovText.textContent='Tippe, wenn lila vorne ist. Triffst du grau/schwarz: Game Over.';
+      ovHint.textContent='Ziel: bis ganz nach unten.';
+      btnNext.style.display='none';
     }
-    return -1;
+  }
+  function hideOverlay(){ overlay.style.display='none'; }
+
+  function resetRun(toLevelIndex){
+    world.levelIndex=toLevelIndex;
+    world.score=0;
+    elScore.textContent='0';
+    makeLevel(world.levelIndex);
+    world.state='playing';
+    hideOverlay();
   }
 
-  function spawnShards(y, type){
-    const n = 10;
-    for(let i=0;i<n;i++){
-      fx.push({
-        x: tower.x + rand(-tower.radius*0.8, tower.radius*0.8),
-        y: y + rand(2, tower.thickness-2),
-        vx: rand(-520,520),
-        vy: rand(-820,-120),
-        life: rand(0.4,0.8),
-        t: 0,
-        type,
-        s: rand(5,10)
-      });
+  // -------- Hit logic --------
+  // Front angle in world space is PI/2 (downwards) in canvas coordinates.
+  // We'll define "front" as angle = PI/2.
+  const FRONT=Math.PI/2;
+
+  function findActiveLayerIndex(){
+    // ball is above the top, then drops down layer by layer. Determine which layer it is targeting.
+    // Define layer centers from top to bottom.
+    const topY=stack.y - (stack.layers.length-1)*stack.layerH;
+    // Find nearest layer under the ball.
+    const dy=ball.y - topY;
+    const idx=Math.round(dy/stack.layerH);
+    return clamp(idx, 0, stack.layers.length-1);
+  }
+
+  function segmentAtAngle(layer, ang){
+    // Normalize angle to [0,TAU)
+    let a=(ang%TAU+TAU)%TAU;
+    for(const s of layer.segs){
+      if(s.broken) continue;
+      // handle wrap not needed since we build increasing a0<a1 in [0,TAU]
+      if(a>=s.a0 && a<=s.a1) return s;
     }
+    return null;
   }
 
-  function gameOver(){
-    state.running = false;
-    state.best = Math.max(state.best, state.score);
-    localStorage.setItem('stack_touch_best', String(state.best));
-    ui.bestLine.textContent = `👑 ${state.best}`;
-    ui.scoreLine.textContent = `${state.score}`;
-    ui.overlay.style.display = 'block';
-    ui.hint.style.display = 'none';
-  }
+  function tap(){
+    if(world.state==='gameover' || world.state==='win') return;
+    if(world.state==='dropping') return; // avoid double taps during fall
 
-  function onTap(){
-    if(!state.running) return;
+    const li=findActiveLayerIndex();
+    const layer=stack.layers[li];
 
-    // hide hint after first action
-    ui.hint.style.display = 'none';
+    // test angle at front relative to stack rotation
+    const testAng=(FRONT - stack.rotation);
+    const seg=segmentAtAngle(layer, testAng);
 
-    const idx = ringIndexUnderBall();
-    if(idx < 0) return;
+    if(seg && seg.safe){
+      seg.broken=true;
+      // if all segments broken in that layer -> mark cleared
+      let anyLeft=false;
+      for(const s of layer.segs){ if(!s.broken){ anyLeft=true; break; } }
+      layer.cleared=!anyLeft;
 
-    const ring = tower.rings[idx];
-    if(ring.broken) return;
+      // add score
+      world.score += 1;
+      elScore.textContent=String(world.score);
+      if(world.score>best){ best=world.score; localStorage.setItem(BEST_KEY, String(best)); elBest.textContent=String(best); }
 
-    if(ring.type === 'purple'){
-      ring.broken = true;
-      state.score += 1;
-      state.ringsLeft -= 1;
-      state.smash = clamp(state.smash + 18, 0, state.smashMax);
-      spawnShards(tower.ringY[idx], 'purple');
-
-      // small drop effect
-      ball.vy = Math.max(ball.vy, ball.dropSpeed);
-
-      // if finished
-      if(state.ringsLeft <= 0){
-        // next run: slightly harder (more dark rings)
-        state.level += 1;
-        state.targetLevel = state.level + 1;
-        newTower();
-        // put tower back under ball
-        ball.y = 160;
-        layout();
-      }
+      // drop to next layer smoothly
+      world.state='dropping';
+      world.dropTargetY = ball.y + stack.layerH;
+      world.shake=6;
     } else {
-      // hit dark => game over
-      spawnShards(tower.ringY[idx], 'dark');
-      gameOver();
+      world.state='gameover';
+      world.shake=10;
+      showOverlay('gameover');
     }
   }
 
-  canvas.addEventListener('pointerdown', (e)=>{
-    e.preventDefault();
-    onTap();
-  }, {passive:false});
+  // -------- Input (touch + mouse) --------
+  let lastTap=0;
+  function onPointerDown(e){
+    // small debounce to avoid iOS double events
+    const now=performance.now();
+    if(now-lastTap<80) return;
+    lastTap=now;
+    tap();
+  }
+  canvas.addEventListener('pointerdown', onPointerDown, {passive:true});
 
-  ui.restartBtn.addEventListener('click', ()=> resetGame());
-  ui.homeBtn.addEventListener('click', ()=> goHome());
+  btnRetry.addEventListener('click', () => {
+    resetRun(world.levelIndex);
+  });
+  btnNext.addEventListener('click', () => {
+    const next = (world.levelIndex+1) % LEVELS.length;
+    resetRun(next);
+  });
 
-  function drawCylinder(){
-    // shaft
-    const w = innerWidth;
-    const h = innerHeight;
-
-    const shaftTop = 60;
-    const shaftBottom = tower.y + tower.thickness*2;
-
-    const grad = ctx.createLinearGradient(tower.x, shaftTop, tower.x, shaftBottom);
-    grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-    grad.addColorStop(1, 'rgba(230,235,245,0.95)');
-    ctx.fillStyle = grad;
-
-    const r = tower.shaftRadius;
-    // rounded rect
+  // -------- Rendering (fast pseudo-3D) --------
+  function drawRing(x,y,rOuter,rInner,a0,a1,fill){
     ctx.beginPath();
-    ctx.moveTo(tower.x - r, shaftTop + r);
-    ctx.arcTo(tower.x - r, shaftTop, tower.x, shaftTop, r);
-    ctx.arcTo(tower.x + r, shaftTop, tower.x + r, shaftTop + r, r);
-    ctx.lineTo(tower.x + r, shaftBottom - r);
-    ctx.arcTo(tower.x + r, shaftBottom, tower.x, shaftBottom, r);
-    ctx.arcTo(tower.x - r, shaftBottom, tower.x - r, shaftBottom - r, r);
+    ctx.arc(x,y,rOuter,a0,a1,false);
+    ctx.arc(x,y,rInner,a1,a0,true);
     ctx.closePath();
-    ctx.fill();
-
-    // subtle shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.10)';
-    ctx.beginPath();
-    ctx.ellipse(tower.x+8, shaftBottom, r*0.95, 12, 0, 0, Math.PI*2);
+    ctx.fillStyle=fill;
     ctx.fill();
   }
 
-  function ringColor(type, layer){
-    if(type==='purple') return layer ? 'rgba(183,166,255,0.95)' : 'rgba(143,123,255,0.98)';
-    return layer ? 'rgba(86,93,115,0.95)' : 'rgba(59,65,82,0.98)';
+  function drawShadowEllipse(x,y,rx,ry,alpha){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.scale(rx,ry);
+    ctx.globalAlpha=alpha;
+    ctx.beginPath();
+    ctx.arc(0,0,1,0,TAU);
+    ctx.fillStyle='#000';
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha=1;
   }
 
-  function drawRing(i){
-    const ring = tower.rings[i];
-    if(ring.broken) return;
+  function render(){
+    // background
+    ctx.fillStyle='#000';
+    ctx.fillRect(0,0,W,H);
 
-    const y = tower.ringY[i];
-    const r = tower.radius;
-    const t = tower.thickness;
+    // gradient background (cheap)
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,getComputedStyle(document.documentElement).getPropertyValue('--bg1').trim());
+    g.addColorStop(1,getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim());
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,W,H);
 
-    // top face
-    ctx.fillStyle = ringColor(ring.type, true);
-    ctx.beginPath();
-    ctx.ellipse(tower.x, y, r, 16, 0, 0, Math.PI*2);
-    ctx.fill();
+    // camera shake
+    const sh=world.shake;
+    const sx=(Math.random()-0.5)*sh;
+    const sy=(Math.random()-0.5)*sh;
 
-    // body
-    ctx.fillStyle = ringColor(ring.type, false);
-    ctx.beginPath();
-    ctx.roundRect(tower.x - r, y, r*2, t, 10);
-    ctx.fill();
+    // center pole
+    const poleW=stack.rInner*0.95;
+    const poleX=stack.x + sx;
+    const poleTop=stack.y - (stack.layers.length*stack.layerH) + sy - world.camY;
+    const poleBottom=stack.y + stack.layerH*2 + sy - world.camY;
 
-    // inner hole
-    ctx.fillStyle = 'rgba(0,0,0,0.10)';
-    ctx.beginPath();
-    ctx.ellipse(tower.x, y+2, tower.shaftRadius*1.05, 10, 0, 0, Math.PI*2);
-    ctx.fill();
+    // pole body
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    const poleH=poleBottom-poleTop;
+    ctx.fillRect(poleX - poleW*0.35, poleTop, poleW*0.7, poleH);
+    // subtle pole highlight
+    ctx.fillStyle='rgba(255,255,255,0.55)';
+    ctx.fillRect(poleX - poleW*0.35 + poleW*0.08, poleTop, poleW*0.10, poleH);
 
-    // small specks like in screenshot
-    if(ring.type==='purple'){
-      ctx.fillStyle = 'rgba(255,170,230,0.5)';
-      for(let k=0;k<3;k++){
-        ctx.beginPath();
-        ctx.arc(tower.x + rand(-r*0.7,r*0.7), y + rand(2,t-2), rand(1.3,2.2), 0, Math.PI*2);
-        ctx.fill();
+    // stack layers (back-to-front)
+    const baseY=stack.y + sy - world.camY;
+    const topY=baseY - (stack.layers.length-1)*stack.layerH;
+
+    for(let i=0;i<stack.layers.length;i++){
+      const y=topY + i*stack.layerH;
+      const layer=stack.layers[i];
+
+      // small fake depth: darker under
+      drawShadowEllipse(stack.x+sx, y+stack.layerH*0.35, stack.rOuter*0.013, stack.rOuter*0.005, 0.10);
+
+      // ring base plate
+      // draw segments
+      const rot=stack.rotation;
+      for(const s of layer.segs){
+        if(s.broken) continue;
+        const a0=s.a0+rot;
+        const a1=s.a1+rot;
+        // color
+        const col = s.safe ? 'rgba(139,103,255,0.95)' : 'rgba(35,40,52,0.95)';
+        drawRing(stack.x+sx, y, stack.rOuter, stack.rInner, a0, a1, col);
       }
+
+      // ring side shading (very cheap: a band)
+      ctx.globalAlpha=0.18;
+      ctx.fillStyle='#000';
+      ctx.fillRect(stack.x+sx - stack.rOuter, y, stack.rOuter*2, stack.layerH*0.42);
+      ctx.globalAlpha=1;
+
+      // top highlight
+      ctx.globalAlpha=0.10;
+      ctx.strokeStyle='#fff';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(stack.x+sx, y, stack.rOuter-1, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha=1;
     }
-  }
 
-  function drawTower(){
-    // draw from back to front (top to bottom)
-    for(let i=0;i<state.ringsTotal;i++) drawRing(i);
-  }
+    // ball shadow
+    drawShadowEllipse(ball.x+sx, ball.y + 26 + sy - world.camY, 0.020*stack.rOuter, 0.008*stack.rOuter, 0.20);
 
-  function drawBall(){
-    const pulse = (Math.sin(state.time*8)+1)/2;
-    const grad = ctx.createRadialGradient(ball.x-4, ball.y-6, 4, ball.x, ball.y, ball.r+10);
-    grad.addColorStop(0, 'rgba(255,180,220,0.95)');
-    grad.addColorStop(1, 'rgba(255,79,184,0.98)');
-    ctx.fillStyle = grad;
+    // ball
+    const by=ball.y + sy - world.camY;
     ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
+    ctx.arc(ball.x+sx, by, ball.r, 0, TAU);
+    ctx.fillStyle='rgba(255,79,182,0.95)';
     ctx.fill();
-
-    // shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    // ball highlight
+    ctx.globalAlpha=0.22;
     ctx.beginPath();
-    ctx.ellipse(ball.x+10, ball.y+18, ball.r*0.9, 6, 0, 0, Math.PI*2);
+    ctx.arc(ball.x+sx - ball.r*0.35, by - ball.r*0.35, ball.r*0.55, 0, TAU);
+    ctx.fillStyle='#fff';
     ctx.fill();
+    ctx.globalAlpha=1;
+
+    // level bottom marker
+    ctx.globalAlpha=0.12;
+    ctx.fillStyle='#0b1220';
+    ctx.fillRect(0, baseY + stack.layerH*1.2, W, H);
+    ctx.globalAlpha=1;
   }
 
-  function drawFX(dt){
-    for(let i=fx.length-1;i>=0;i--){
-      const p = fx[i];
-      p.t += dt;
-      if(p.t >= p.life){ fx.splice(i,1); continue; }
-      const a = p.t / p.life;
-      p.vy += 2600*dt;
-      p.x += p.vx*dt;
-      p.y += p.vy*dt;
-      const alpha = 1 - easeOut(a);
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = p.type==='purple' ? 'rgba(183,166,255,0.95)' : 'rgba(86,93,115,0.95)';
-      ctx.fillRect(p.x, p.y, p.s, p.s);
-      ctx.globalAlpha = 1;
-    }
-  }
+  // -------- Update loop --------
+  let last=performance.now();
 
-  function updateUI(){
-    ui.level.textContent = `${state.level}`;
-    ui.remaining.textContent = `${state.ringsLeft}`;
-    const pct = 100 * (1 - state.ringsLeft / state.ringsTotal);
-    ui.prog.style.width = `${clamp(pct,0,100)}%`;
-    ui.fv.style.height = `${clamp(100*state.smash/state.smashMax,0,100)}%`;
-  }
+  function update(dt){
+    world.t += dt;
 
-  let last = performance.now();
-  function tick(now){
-    const dt = Math.min(0.033, (now-last)/1000);
-    last = now;
-    state.time += dt;
+    const cfg=LEVELS[clamp(world.levelIndex,0,LEVELS.length-1)];
 
-    if(state.running){
-      // gravity
-      ball.vy += ball.g*dt;
-      ball.y += ball.vy*dt;
+    // smooth rotation (slightly eased)
+    stack.rotation += cfg.rotSpeed * dt * 60;
 
-      // collide with current ring (acts like a floor unless broken)
-      const idx = ringIndexUnderBall();
-      if(idx >= 0){
-        const ring = tower.rings[idx];
-        const y = tower.ringY[idx];
-        if(!ring.broken){
-          const floorY = y; // top of ring
-          if(ball.y + ball.r > floorY && ball.vy > 0){
-            ball.y = floorY - ball.r;
-            ball.vy = -ball.vy * ball.bounce;
-            // decay smash bar
-            state.smash = clamp(state.smash - 10*dt, 0, state.smashMax);
-          }
-        } else {
-          // if ring is broken, let ball fall faster
-          ball.vy = Math.max(ball.vy, ball.dropSpeed);
-          state.smash = clamp(state.smash - 18*dt, 0, state.smashMax);
+    // camera follows ball so it stays near upper-middle (smooth)
+    const desiredCam = clamp((ball.y - (stack.y - stack.layers.length*stack.layerH + 90)), -9999, 9999);
+    world.camY += (desiredCam - world.camY) * (1 - Math.pow(0.001, dt));
+
+    // shake decay
+    world.shake *= Math.pow(0.02, dt);
+
+    if(world.state==='dropping'){
+      // smooth drop
+      const speed = cfg.dropSpeed * (dt*60);
+      ball.y += speed;
+      if(ball.y >= world.dropTargetY - 0.5){
+        ball.y = world.dropTargetY;
+        world.state='playing';
+
+        // win check: reached bottom
+        const bottomY = stack.y + stack.layerH*0.5;
+        if(ball.y >= bottomY){
+          world.state='win';
+          showOverlay('win');
         }
       }
-
-      // keep in view
-      if(ball.y > innerHeight - 60){
-        ball.y = innerHeight - 60;
-        ball.vy = -Math.abs(ball.vy) * 0.2;
-      }
     }
-
-    // draw
-    ctx.clearRect(0,0,innerWidth,innerHeight);
-    drawCylinder();
-    drawTower();
-    drawBall();
-    drawFX(dt);
-
-    updateUI();
-    requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+
+  function frame(now){
+    const dt = clamp((now-last)/1000, 0, 0.033);
+    last=now;
+    if(world.state!=='gameover' && world.state!=='win') update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // Start
+  makeLevel(0);
+  showOverlay('start');
+  overlay.style.display='flex';
+  // start when user taps anywhere (including overlay)
+  overlay.addEventListener('pointerdown', (e)=>{
+    // if game is at start screen
+    if(ovTitle.textContent==='STACK SMASH'){
+      hideOverlay();
+      world.state='playing';
+      e.preventDefault();
+    }
+  }, {passive:false});
+
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>
